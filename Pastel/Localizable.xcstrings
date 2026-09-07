@@ -839,6 +839,9 @@
         }
       }
     },
+    "GitHub Star" : {
+
+    },
     "IPA 会在此处保存。" : {
       "localizations" : {
         "en" : {
@@ -1580,6 +1583,9 @@
           }
         }
       }
+    },
+    "不可用" : {
+
     },
     "从 GitHub 检查 Pastel 新版本。" : {
       "localizations" : {
@@ -5326,9 +5332,6 @@
         }
       }
     },
-    "支持开发者" : {
-
-    },
     "无" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -5523,6 +5526,9 @@
           }
         }
       }
+    },
+    "无法获取可靠的设备 GUID。为保护 Apple 账户，Pastel 已阻止登录。请确认正在使用真实 Mac，并在更新系统后重试。" : {
+
     },
     "无法连接 Apple 服务器。请检查网络连接后再试。" : {
 
@@ -8483,6 +8489,46 @@
         }
       }
     },
+    "获取并下载" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get and Download"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "入手してダウンロード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받고 다운로드"
+          }
+        },
+        "th" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "รับและดาวน์โหลด"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取得並下載"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "取得並下載"
+          }
+        }
+      }
+    },
     "获取版本列表" : {
       "localizations" : {
         "en" : {
@@ -8519,6 +8565,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "取得版本清單"
+          }
+        }
+      }
+    },
+    "要下载 %@，需要先从 Apple 免费获取此 App。是否继续？" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To download %@, first get this free app from Apple. Continue?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をダウンロードするには、まずAppleからこの無料Appを入手する必要があります。続けますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 다운로드하려면 먼저 Apple에서 이 무료 App을 받아야 합니다. 계속하시겠습니까?"
+          }
+        },
+        "th" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "หากต้องการดาวน์โหลด %@ ต้องรับ App ฟรีนี้จาก Apple ก่อน ดำเนินการต่อหรือไม่?"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要下載 %@，需要先從 Apple 免費取得此 App。是否繼續？"
+          }
+        },
+        "zh-HK" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要下載 %@，需要先從 Apple 免費取得此 App。是否繼續？"
           }
         }
       }

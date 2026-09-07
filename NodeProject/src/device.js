@@ -1,21 +1,20 @@
 import getMAC from 'getmac';
+import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'fs';
-import {t} from './i18n.js';
-
-const INVALID_DEVICE_GUIDS = new Set([
-    '000000000000',
-    '020000000000',
-    'FFFFFFFFFFFF',
-]);
 
 export function normalizeDeviceGuid(value) {
     const cleaned = String(value || '').replace(/[^0-9a-f]/gi, '').toUpperCase();
-    if (cleaned.length !== 12 || INVALID_DEVICE_GUIDS.has(cleaned)) return '';
+    if (cleaned.length !== 12) return '';
+    if (cleaned === '000000000000' || cleaned === '020000000000' || cleaned === 'FFFFFFFFFFFF') return '';
     const firstByte = Number.parseInt(cleaned.slice(0, 2), 16);
     if (!Number.isFinite(firstByte) || (firstByte & 1) !== 0) return '';
     return cleaned;
+}
+
+function randomGuid() {
+    return crypto.randomBytes(6).toString('hex').toUpperCase();
 }
 
 function systemGuid() {
@@ -24,12 +23,6 @@ function systemGuid() {
     } catch {
         return '';
     }
-}
-
-function invalidDeviceGuidError() {
-    const error = new Error(t('device_guid_invalid'));
-    error.code = 'DEVICE_GUID_INVALID';
-    return error;
 }
 
 function supportDir() {
@@ -49,11 +42,8 @@ function guidFile() {
 }
 
 export function getDeviceGuid() {
-    if (process.env.IPA_DEVICE_GUID !== undefined) {
-        const envGuid = normalizeDeviceGuid(process.env.IPA_DEVICE_GUID);
-        if (!envGuid) throw invalidDeviceGuidError();
-        return envGuid;
-    }
+    const envGuid = normalizeDeviceGuid(process.env.IPA_DEVICE_GUID);
+    if (envGuid) return envGuid;
 
     const file = guidFile();
     try {
@@ -65,14 +55,12 @@ export function getDeviceGuid() {
         // Fall through and regenerate.
     }
 
-    const guid = systemGuid();
-    if (!guid) throw invalidDeviceGuidError();
+    const guid = systemGuid() || randomGuid();
     try {
         mkdirSync(path.dirname(file), {recursive: true, mode: 0o700});
         writeFileSync(file, `${guid}\n`, {mode: 0o600});
     } catch {
-        // The Swift host normally provides and persists the GUID. Standalone
-        // callers can still use the stable system value for this process.
+        // A stable in-memory value is still better than failing the login.
     }
     return guid;
 }

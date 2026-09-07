@@ -239,7 +239,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026090605;
+				CURRENT_PROJECT_VERSION = 2026090701;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Pastel/Info.plist;
@@ -247,7 +247,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 20260906;
+				MARKETING_VERSION = 20260907;
 				PRODUCT_BUNDLE_IDENTIFIER = com.allenmiao.ipahistorydownload;
 				PRODUCT_NAME = "Pastel";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -264,7 +264,7 @@
 				CODE_SIGN_IDENTITY = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026090605;
+				CURRENT_PROJECT_VERSION = 2026090701;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Pastel/Info.plist;
@@ -272,7 +272,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 20260906;
+				MARKETING_VERSION = 20260907;
 				PRODUCT_BUNDLE_IDENTIFIER = com.allenmiao.ipahistorydownload;
 				PRODUCT_NAME = "Pastel";
 				SWIFT_EMIT_LOC_STRINGS = YES;

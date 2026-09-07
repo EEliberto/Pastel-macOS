@@ -24,10 +24,17 @@ test('mergeParts resolves only after the complete IPA is flushed', async () => {
     }
 });
 
-test('normal downloads reuse the existing license without calling buyProduct', () => {
+test('downloads check the existing license before entering the acquisition fallback', () => {
     const source = readFileSync(new URL('../src/ipa.js', import.meta.url), 'utf8');
     const runDownload = source.match(/async runDownload\([\s\S]*?\n    async run\(/)?.[0] || '';
     assert.notEqual(runDownload, '');
-    assert.doesNotMatch(runDownload, /Store\.purchase\(/);
-    assert.match(runDownload, /const song = await this\.info\(APPID, appVerId\)/);
+    assert.match(runDownload, /const song = await this\.downloadInfo\(APPID, appVerId\)/);
+
+    const downloadInfo = source.match(/async downloadInfo\([\s\S]*?\n    async run\(/)?.[0] || '';
+    assert.notEqual(downloadInfo, '');
+    assert.match(downloadInfo, /return await this\.info\(APPID, appVerId\)/);
+    assert.match(downloadInfo, /if \(!noLicense\) throw error/);
+    assert.match(downloadInfo, /@@IPA:requires-acquisition/);
+    assert.match(downloadInfo, /IPA_ALLOW_APP_ACQUIRE/);
+    assert.match(downloadInfo, /Store\.purchase\(APPID, '', this\.auth\)/);
 });

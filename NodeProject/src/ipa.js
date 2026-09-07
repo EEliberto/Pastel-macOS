@@ -233,8 +233,8 @@ export class Ipa {
         if (flag === '1') return true;
         if (flag === '0') return false;
         const info = await appPriceInfo(APPID, {country: process.env.IPA_APP_COUNTRY || 'us'});
-        // lookup 不可用（地区差异等）时按「免费」处理，保持免费 App 可用；付费 App 仍会在 buyProduct 阶段被 Apple 拒绝、不会扣费。
-        return info ? info.isFree : true;
+        // 无法确认价格时不允许主动申请许可，避免把未知状态误判成免费。
+        return info ? info.isFree : false;
     }
 
     // 从 Apple 官方元数据获取该 App 的全部历史版本 ID（外部版本标识）。
@@ -305,13 +305,7 @@ export class Ipa {
         this.cache = await fsPromises.mkdtemp(path.join(os.tmpdir(), 'ipa-history-download-parts-'));
         console.log(t('temp_dir', {cache: this.cache}));
         try {
-            // A version download uses the license that AppInfo already verifies.
-            // Calling buyProduct again here is unnecessary and breaks existing
-            // licenses because StoreServices commonly answers a repeated request
-            // with failureType 5002 and a generic “unknown error” message.
-            // New free Apps are acquired explicitly by listVersionIds() only
-            // after the user confirms the acquisition prompt.
-            const song = await this.info(APPID, appVerId);
+            const song = await this.downloadInfo(APPID, appVerId);
             const res = await download(song.URL, this.out, this.cache, this.auth.authHeaders || {});
             console.log(t('download_complete', {mb: (res.fileSize / 1024 / 1024).toFixed(2), parts: res.parts}));
             // 稳定的机器标记：进入「校验/签名/存档」阶段，供 App 显示「打包中」（与显示文案解耦，不随语言变化）。
@@ -327,6 +321,49 @@ export class Ipa {
             await fsPromises.rm(this.cache, {recursive: true, force: true}).catch(() => {});
             Store.cleanup?.();
             console.log(t('cleanup_done'));
+        }
+    }
+
+    // Download sources only provide version IDs. The Apple account license is a
+    // separate concern, so every source must use this same acquisition fallback.
+    // Existing licenses never call buyProduct: that endpoint can return an
+    // unrelated 5002 error when a valid license is purchased repeatedly.
+    async downloadInfo(APPID, appVerId) {
+        try {
+            return await this.info(APPID, appVerId);
+        } catch (error) {
+            const noLicense = error.code === 'LICENSE_NOT_FOUND'
+                || /License not found|Redownload Unavailable with This Apple Account/i.test(error.message || '');
+            if (!noLicense) throw error;
+
+            // Never attempt to acquire a paid App. The explicit machine marker
+            // is emitted only for a free App that can be safely added to the
+            // account after the macOS app obtains user confirmation.
+            if (!(await this.isFreeApp(APPID))) {
+                throw new Error(t('paid_not_purchased'));
+            }
+            if (process.env.IPA_ALLOW_APP_ACQUIRE !== '1') {
+                console.log('@@IPA:requires-acquisition');
+                throw error;
+            }
+
+            // Acquire the current free App license, then request the originally
+            // selected historical version. Passing the historical version to
+            // buyProduct is not a valid way to create a new account license.
+            await Store.purchase(APPID, '', this.auth);
+            let lastError = error;
+            for (const delayMs of [350, 800, 1600, 3000]) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+                try {
+                    return await this.info(APPID, appVerId);
+                } catch (retryError) {
+                    lastError = retryError;
+                    const stillMissing = retryError.code === 'LICENSE_NOT_FOUND'
+                        || /License not found|Redownload Unavailable with This Apple Account/i.test(retryError.message || '');
+                    if (!stillMissing) throw retryError;
+                }
+            }
+            throw lastError;
         }
     }
 

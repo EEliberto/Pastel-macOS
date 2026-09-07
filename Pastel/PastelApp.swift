@@ -1035,6 +1035,11 @@ struct DownloadFailure: Identifiable, Equatable {
     let message: String
 }
 
+struct AppAcquisitionRequest: Identifiable, Equatable {
+    let id: String
+    let appName: String
+}
+
 struct AppLanguage: Identifiable, Hashable {
     let code: String
     var id: String { code }
@@ -1394,6 +1399,7 @@ final class DownloadManager {
         var isPackaging: Bool = false
         var needsCode: Bool = false
         var awaitingSession: Bool = false
+        var needsAcquisition: Bool = false
     }
 
     private(set) var jobs: [String: Job] = [:]
@@ -1408,6 +1414,10 @@ final class DownloadManager {
     func job(_ id: String) -> Job? { jobs[id] }
     var firstJobNeedingCode: Job? { jobs.values.first { $0.needsCode } }
     var codeNeededJobID: String? { jobs.values.first { $0.needsCode }?.id }
+    var acquisitionRequest: AppAcquisitionRequest? {
+        guard let job = jobs.values.first(where: { $0.needsAcquisition }) else { return nil }
+        return AppAcquisitionRequest(id: job.id, appName: job.label)
+    }
     var focusJob: Job? {
         jobs.values.first { processes[$0.id]?.isRunning == true } ?? jobs.values.first
     }
@@ -1511,6 +1521,22 @@ final class DownloadManager {
         start(id: id, label: label, config: retryConfig)
     }
 
+    func acquireAndRetry(id: String) {
+        guard var config = configs[id], let job = jobs[id] else { return }
+        var updatedJob = job
+        updatedJob.needsAcquisition = false
+        jobs[id] = updatedJob
+        config.allowAppAcquisition = true
+        start(id: id, label: job.label, config: config)
+    }
+
+    func cancelAcquisition(id: String) {
+        guard var job = jobs[id] else { return }
+        job.needsAcquisition = false
+        jobs[id] = job
+        publishFailure(for: job)
+    }
+
     func stop(id: String) { processes[id]?.terminate() }
     func stopAll() { processes.values.forEach { $0.terminate() } }
 
@@ -1526,6 +1552,7 @@ final class DownloadManager {
         guard var job = jobs[id] else { return }
         let normalized = text.replacingOccurrences(of: "\r", with: "\n")
         if normalized.contains("@@IPA:phase=packaging") { job.isPackaging = true }
+        if normalized.contains("@@IPA:requires-acquisition") { job.needsAcquisition = true }
         let cleaned = normalized
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.hasPrefix("@@IPA:") }
@@ -1540,7 +1567,7 @@ final class DownloadManager {
         guard var job = jobs[id] else { return }
         job.progress = nil; job.isPackaging = false
         if exitCode == 0 {
-            job.status = .done; job.needsCode = false; job.awaitingSession = false
+            job.status = .done; job.needsCode = false; job.awaitingSession = false; job.needsAcquisition = false
             job.log += "\n" + String(localized: "任务完成。") + "\n"
             jobs[id] = job
             for (otherID, otherJob) in jobs where otherID != id && processes[otherID] == nil && otherJob.awaitingSession {
@@ -1554,7 +1581,7 @@ final class DownloadManager {
             job.needsCode = ipaIsVerificationChallenge(job.log)
             job.log += "\n" + String(localized: "任务结束，退出码：\(Int(exitCode))") + "\n"
             jobs[id] = job
-            if !job.needsCode { publishFailure(for: job) }
+            if !job.needsCode && !job.needsAcquisition { publishFailure(for: job) }
         }
     }
 
@@ -2106,6 +2133,8 @@ struct ContentView: View {
     @State private var versionFeature = VersionHistoryFeatureState()
     @State private var libraryFeature = DownloadLibraryFeatureState()
     @State private var taskFeature = TaskLogFeatureState()
+    @State private var pendingAppAcquisition: AppAcquisitionRequest?
+    @State private var showingAppAcquisitionPrompt = false
     @Namespace private var manualActionGlassNamespace
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var activeField: ActiveField?
@@ -2204,6 +2233,11 @@ struct ContentView: View {
                 accountFeature.showingVerificationPrompt = true
             }
         }
+        .onChange(of: downloads.acquisitionRequest) { _, request in
+            guard let request else { return }
+            pendingAppAcquisition = request
+            showingAppAcquisitionPrompt = true
+        }
         .onChange(of: downloadDir) { _, _ in refreshDownloadedFiles() }
         .onChange(of: catalog.versionResults) { _, results in
             refreshDownloadedFiles()
@@ -2248,6 +2282,22 @@ struct ContentView: View {
             }
         } message: {
             Text(String(localized: "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。"))
+        }
+        .alert(
+            String(localized: "需要获取 App"),
+            isPresented: $showingAppAcquisitionPrompt,
+            presenting: pendingAppAcquisition
+        ) { request in
+            Button(String(localized: "获取并下载")) {
+                pendingAppAcquisition = nil
+                downloads.acquireAndRetry(id: request.id)
+            }
+            Button(String(localized: "取消"), role: .cancel) {
+                pendingAppAcquisition = nil
+                downloads.cancelAcquisition(id: request.id)
+            }
+        } message: { request in
+            Text(String(localized: "要下载 \(request.appName)，需要先从 Apple 免费获取此 App。是否继续？"))
         }
     }
 
@@ -5724,6 +5774,8 @@ struct ContentView: View {
         }
 
         let removeUpdateMetadata = removeAppStoreUpdateMetadataOverride ?? versionFeature.selectedVersion.map { noUpdateEnabled(for: $0) } ?? false
+        let accountCountry = account.countryCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let priceFlag = accountCountry.caseInsensitiveCompare(selectedCountryCode) == .orderedSame ? appIsFreeFlag() : ""
         let config = RunConfig(
             appleAccount: cleanAppleAccount,
             password: cleanPassword,
@@ -5731,6 +5783,8 @@ struct ContentView: View {
             appID: cleanAppID,
             versionID: cleanVersionID,
             downloadDir: cleanDir,
+            appIsFree: priceFlag,
+            appCountry: accountCountry.isEmpty ? selectedCountryCode : accountCountry,
             removeAppStoreUpdateMetadata: removeUpdateMetadata
         )
         let variant = IPADownloadVariant(removeAppStoreUpdateMetadata: removeUpdateMetadata)
