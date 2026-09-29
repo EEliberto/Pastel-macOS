@@ -12,13 +12,14 @@
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <sparkle:criticalUpdate/>
             <description sparkle:format="plain-text"><![CDATA[
-Pastel 20260929 更新内容：
+此更新提高了历史版本下载的可靠性，并包含以下改进：
 
-1. 修复部分 App 的指定版本下载时提示“No Longer Available”的问题，增加 Apple 备用下载路径。
-2. 加强下载版本校验，确保备用路径返回的 App 与所选版本一致，避免下载到错误版本。
-3. 改进账号会话、下载许可和服务器繁忙错误的处理，避免真实原因被后续错误覆盖。
+• 修复部分 App 下载指定历史版本时可能显示“No Longer Available”的问题。
+• 当主要下载服务无法提供所选版本时，自动尝试 Apple 的备用下载服务。
+• 加强下载响应验证，确保获得的 App 和版本与所选内容一致。
+• 改进 Apple 账户会话、下载许可和服务暂时不可用时的错误提示。
 
-本次已使用真实 Apple 账户完整下载并验证 Alipay 12.12.30、12.12.26 和 12.12.20。
+建议所有用户安装此更新。
 ]]></description>
             <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20260929/Pastel-20260929-build-2026092901.dmg" length="55357887" type="application/octet-stream" sparkle:edSignature="Ypv3sEBw1sp+CzHuo9ojDmt/Tc6rEGtvUuREcfqnElaDlbcZthDOxmyjPJhLK6BFo4VFxQmRpQUoHOpd+2bsDA=="/>
         </item>
