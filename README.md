@@ -25,7 +25,7 @@
 选择 App Store 地区，搜索 App，再从版本记录中选取需要的版本。Pastel 会根据 Apple 账户所在地区匹配商店，让搜索与下载始终保持一致。
 
 <p align="center">
-  <img width="820" alt="Pastel App 版本详情" src="https://github.com/user-attachments/assets/f3685fee-445f-41bc-8fea-2d1e602dec92">
+  <img width="820" alt="Pastel App 版本详情" src="https://github.com/user-attachments/assets/1f260ee8-d97c-445e-990d-e5f3bb6aa903">
 </p>
 
 <br>
@@ -37,7 +37,7 @@ Pastel 汇集 Timbrd、Agzy、Bilin 和 Apple 提供的版本记录。版本来�
 如果账户尚未获取某个免费 App，Pastel 会在你确认后先将它加入账户，再继续下载。付费 App 需要由该账户事先购买。
 
 <p align="center">
-  <img width="560" alt="Pastel 版本来源选择" src="https://github.com/user-attachments/assets/4de67361-8727-4705-8718-f9be81bc7b01">
+  <img width="560" alt="Pastel 版本来源选择" src="https://github.com/user-attachments/assets/f382ef02-e764-4763-b3eb-02f48ba0a0fe">
 </p>
 
 <br>
@@ -47,7 +47,7 @@ Pastel 汇集 Timbrd、Agzy、Bilin 和 Apple 提供的版本记录。版本来�
 下载资料库按 App 整理 IPA，并显示版本、地区、Apple 账户和更新状态。你可以在“访达”中显示文件，也可以使用共享菜单或隔空投送将文件发送至 iPhone 或 iPad。
 
 <p align="center">
-  <img width="900" alt="Pastel 下载资料库" src="https://github.com/user-attachments/assets/1de14592-ebc6-4ee7-9b0c-17e7e0073171">
+  <img width="900" alt="Pastel 下载资料库" src="https://github.com/user-attachments/assets/3b50e39c-84bc-4c65-b2f4-c55bab9bdabb">
 </p>
 
 <br>
@@ -57,7 +57,7 @@ Pastel 汇集 Timbrd、Agzy、Bilin 和 Apple 提供的版本记录。版本来�
 Pastel 使用 SwiftUI 构建，采用 macOS 26 的 Liquid Glass 设计，并提供简体中文、繁体中文、日语、韩语和泰语界面。网络访问遵循 macOS 代理设置，并支持 HTTP、HTTPS、SOCKS5、`ALL_PROXY` 和 `NO_PROXY`。
 
 <p align="center">
-  <img width="820" alt="Pastel 多语言界面" src="https://github.com/user-attachments/assets/e6ef07a0-8834-457d-87f7-0bea14b45633">
+  <img width="820" alt="Pastel 多语言界面" src="https://github.com/user-attachments/assets/058f2acc-55aa-422b-a48e-fc7a0820be9a">
 </p>
 
 <br>
