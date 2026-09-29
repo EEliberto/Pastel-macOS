@@ -7,6 +7,7 @@ $(SRCROOT)/NodeProject/src/client.js
 $(SRCROOT)/NodeProject/src/credentials.js
 $(SRCROOT)/NodeProject/src/device.js
 $(SRCROOT)/NodeProject/src/downloader.js
+$(SRCROOT)/NodeProject/src/download-recovery.js
 $(SRCROOT)/NodeProject/src/gsa.js
 $(SRCROOT)/NodeProject/src/i18n.js
 $(SRCROOT)/NodeProject/src/ipa.js

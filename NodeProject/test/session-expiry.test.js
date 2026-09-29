@@ -69,8 +69,7 @@ test('keeps the missing-license and Apple-busy states distinct in source', () =>
     const clientSource = readFileSync(new URL('../src/client.js', import.meta.url), 'utf8');
     assert.match(clientSource, /serialNumber: '0'/);
     assert.match(clientSource, /downloaddispatch\.itunes\.apple\.com\/r\/redownload/);
-    assert.match(clientSource, /failureType \|\| ''\) === '5002' \|\| !parsedResp\.songList/);
-    assert.match(clientSource, /if \(!parsedResp\.songList\?\.\[0\]\)[\s\S]*e\.code = listVersions \? 'APPINFO_EMPTY' : 'APPINFO_FAIL'/);
+    assert.match(clientSource, /if \(!parsedResp\.songList\?\.\[0\]\)[\s\S]*e\.code = failureCode \|\| \(listVersions \? 'APPINFO_EMPTY' : 'APPINFO_FAIL'\)/);
     assert.match(clientSource, /failureCode === 'APPINFO_BUSY'/);
 });
 

@@ -31,3 +31,9 @@ SPARKLE_SIGNING_KEY.md
 
 # Local build workspace
 work/
+
+# Downloaded test packages and build outputs
+*.ipa
+/dist/
+/outputs/
+*.log

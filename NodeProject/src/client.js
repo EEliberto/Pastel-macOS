@@ -1,5 +1,6 @@
 import plist from 'plist';
-import {storeLogin, curlRequest, parsePlistLoose, STORE_USER_AGENT, cleanup} from './gsa.js';
+import {storeLogin, curlRequest, parsePlistLoose, STORE_USER_AGENT, cleanup, fetchStoreURLBag} from './gsa.js';
+import {recoverRedownload, shouldTryRedownload} from './download-recovery.js';
 import {getDeviceGuid} from './device.js';
 import {t} from './i18n.js';
 
@@ -80,7 +81,7 @@ const _endpoints = {
             creditDisplay: '',
             guid,
             salableAdamId: appIdentifier,
-            ...(!redownload && {serialNumber: '0'}),
+            serialNumber: '0',
             ...(appVerId && {[redownload ? 'appExtVrsId' : 'externalVersionId']: appVerId}),
         }),
     },
@@ -139,7 +140,7 @@ class Store {
 
     // 调用 StoreServices 私有接口（volumeStoreDownloadProduct / buyProduct），经系统代理走 curl，
     // 并复用 authenticate 阶段种下的会话 cookie（volumeStoreDownloadProduct 依赖该会话）。
-    static #storePost(prefix, url, bodyObj, headers, authContext) {
+    static #storePost(prefix, url, bodyObj, headers, authContext, {redownload = false} = {}) {
         const body = plist.build(bodyObj);
         let res = null;
         for (let attempt = 1; attempt <= 3; attempt++) {
@@ -152,6 +153,11 @@ class Store {
             throw e;
         }
         if (isAuthFailureResponse('', '', res.status)) throw tokenExpiredError();
+        if (redownload && res.status === 500 && res.body.length === 0) {
+            const error = new Error('Empty Apple redownload response');
+            error.code = 'EMPTY_REDOWNLOAD_RESPONSE';
+            throw error;
+        }
         try {
             return {...parsePlistLoose(res.body, t('ctx_resp')), _httpStatus: res.status};
         } catch (error) {
@@ -178,18 +184,26 @@ class Store {
             headers,
             authContext
         );
-        // Asspp/ApplePackage 的兼容路径：Apple 会对部分第三方 App 在主端点
-        // 返回 5002，近期也会返回 status=0 + 空 songList。两种情况都改走
-        // downloaddispatch 的 redownload 端点；Gemini 等 App 的历史数据在这里可用。
-        if (String(parsedResp.failureType || '') === '5002' || !parsedResp.songList?.[0]) {
-            const redownload = _endpoints.Redownload;
-            parsedResp = this.#storePost(
-                t('label_download_app'),
-                redownload.url(this.guid),
-                endpoint.buildBody({appIdentifier, appVerId, guid: this.guid, redownload: true}),
-                headers,
-                authContext
-            );
+        // Do not hide an expired session behind a fallback availability error.
+        if (isAuthFailureResponse(parsedResp.failureType, parsedResp.customerMessage)) {
+            throw tokenExpiredError();
+        }
+        // Keep the existing empty/5002 fallback, but preserve explicit license,
+        // busy and other structured errors returned by the primary endpoint.
+        if (shouldTryRedownload(parsedResp)) {
+            parsedResp = await recoverRedownload({
+                appIdentifier,
+                versionID: appVerId,
+                loadBag: () => fetchStoreURLBag(this.guid),
+                request: (kind, updateURL) => this.#storePost(
+                    t('label_download_app'),
+                    kind === 'update' ? `${updateURL}?guid=${this.guid}` : _endpoints.Redownload.url(this.guid),
+                    endpoint.buildBody({appIdentifier, appVerId, guid: this.guid, redownload: true}),
+                    headers,
+                    authContext,
+                    {redownload: kind === 'redownload'}
+                ),
+            });
         }
         const failureCode = appInfoFailureCode(parsedResp.failureType, parsedResp.customerMessage);
         if (failureCode === 'APPINFO_BUSY') {
@@ -210,7 +224,7 @@ class Store {
             // Apple sometimes reports an unowned free App as status=0 with an
             // empty songList instead of failureType=9610. Only the version-list
             // path may interpret that response as a missing license candidate.
-            e.code = listVersions ? 'APPINFO_EMPTY' : 'APPINFO_FAIL';
+            e.code = failureCode || (listVersions ? 'APPINFO_EMPTY' : 'APPINFO_FAIL');
             throw e;
         }
         return parsedResp;

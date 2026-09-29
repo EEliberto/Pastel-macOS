@@ -161,20 +161,21 @@ function extractPlistText(text) {
     return text;
 }
 
+export function fetchStoreURLBag(guid) {
+    const url = `https://init.itunes.apple.com/bag.xml?guid=${encodeURIComponent(guid)}`;
+    const {status, body} = curlRequest('GET', url, {
+        headers: {'User-Agent': STORE_UA, Accept: 'application/xml'},
+        follow: true,
+        timeout: 20,
+    });
+    if (status < 200 || status >= 300) throw new Error('Unable to fetch Apple URL bag');
+    const parsed = plist.parse(extractPlistText(body.toString('utf8')));
+    return parsed?.urlBag || parsed;
+}
+
 function fetchNativeAuthEndpoint(guid) {
     try {
-        const url = `https://init.itunes.apple.com/bag.xml?guid=${encodeURIComponent(guid)}`;
-        const {status, body} = curlRequest('GET', url, {
-            headers: {'User-Agent': STORE_UA, Accept: 'application/xml'},
-            follow: true,
-            timeout: 20,
-        });
-        if (status < 200 || status >= 300) return DEFAULT_NATIVE_AUTH_BASE;
-        const parsed = plist.parse(extractPlistText(body.toString('utf8')));
-        const authURL = parsed?.urlBag?.authenticateAccount || parsed?.authenticateAccount;
-        if (!authURL) return DEFAULT_NATIVE_AUTH_BASE;
-        // 规范化尾部斜杠
-        return authenticateURL(authURL);
+        return authenticateURL(fetchStoreURLBag(guid)?.authenticateAccount || DEFAULT_NATIVE_AUTH_BASE);
     } catch {
         return DEFAULT_NATIVE_AUTH_BASE;
     }

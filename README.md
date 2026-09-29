@@ -6,7 +6,7 @@
   <p>搜索 App、查找历史版本，并将 IPA 轻松传输到 iPhone 或 iPad。</p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-20260831-0A84FF?style=flat-square" alt="Version 20260831">
+    <img src="https://img.shields.io/badge/version-20260929-0A84FF?style=flat-square" alt="Version 20260929">
     <img src="https://img.shields.io/badge/macOS-26%2B-111111?style=flat-square&logo=apple" alt="macOS 26 or later">
     <img src="https://img.shields.io/badge/Apple%20Silicon-required-111111?style=flat-square&logo=apple" alt="Apple Silicon required">
     <img src="https://img.shields.io/badge/license-Apache--2.0-6B7280?style=flat-square" alt="Apache 2.0 License">
@@ -24,9 +24,11 @@
 ---
 
 > [!IMPORTANT]
-> **2026 年 8 月 31 日更新通知**
+> **2026 年 9 月 29 日更新通知**
 >
-> Pastel 已尝试适配 Apple 最新的账户登录调整，当前登录协议与安全检查参考 [majd/ipatool](https://github.com/majd/ipatool)。20260831 是强制更新版本，请务必下载最新版。新的认证方式要求在真实的 Apple Silicon Mac 上运行；虚拟机环境仍然无法登录或下载 IPA。
+> Pastel 20260929 修复部分 App 指定版本下载时提示“No Longer Available”的问题，并加强下载版本校验及错误处理。可通过 App 内“检查更新”获取新版，完整变更见[更新日志](release-notes/20260929/release-notes.md)。
+>
+> 登录与下载要求在真实的 Apple Silicon Mac 上运行。
 
 ## Pastel 能做什么
 

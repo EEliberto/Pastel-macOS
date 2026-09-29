@@ -3,6 +3,26 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20260929</title>
+            <pubDate>Tue, 29 Sep 2026 10:15:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260929</link>
+            <sparkle:version>2026092901</sparkle:version>
+            <sparkle:shortVersionString>20260929</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[
+Pastel 20260929 更新内容：
+
+1. 修复部分 App 的指定版本下载时提示“No Longer Available”的问题，增加 Apple 备用下载路径。
+2. 加强下载版本校验，确保备用路径返回的 App 与所选版本一致，避免下载到错误版本。
+3. 改进账号会话、下载许可和服务器繁忙错误的处理，避免真实原因被后续错误覆盖。
+
+本次已使用真实 Apple 账户完整下载并验证 Alipay 12.12.30、12.12.26 和 12.12.20。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20260929/Pastel-20260929-build-2026092901.dmg" length="55357887" type="application/octet-stream" sparkle:edSignature="Ypv3sEBw1sp+CzHuo9ojDmt/Tc6rEGtvUuREcfqnElaDlbcZthDOxmyjPJhLK6BFo4VFxQmRpQUoHOpd+2bsDA=="/>
+        </item>
+        <item>
             <title>20260907</title>
             <pubDate>Mon, 07 Sep 2026 10:02:12 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260907</link>
