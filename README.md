@@ -54,7 +54,7 @@ Pastel 汇集 Timbrd、Agzy、Bilin 和 Apple 提供的版本记录。版本来�
 
 ## 专为 Mac 打造
 
-Pastel 使用 SwiftUI 构建，采用 macOS 26 的 Liquid Glass 设计，并提供简体中文、繁体中文、日语、韩语和泰语界面。网络访问遵循 macOS 代理设置，并支持 HTTP、HTTPS、SOCKS5、`ALL_PROXY` 和 `NO_PROXY`。
+Pastel 使用 SwiftUI 构建，采用 Apple 的最新 Liquid Glass 设计语言，并提供简体中文、繁体中文、日语、韩语和泰语界面。网络访问遵循 macOS 代理设置，并支持 HTTP、HTTPS、SOCKS5、`ALL_PROXY` 和 `NO_PROXY`。
 
 <p align="center">
   <img width="820" alt="Pastel 多语言界面" src="https://github.com/user-attachments/assets/058f2acc-55aa-422b-a48e-fc7a0820be9a">
@@ -70,7 +70,7 @@ Pastel 使用 SwiftUI 构建，采用 macOS 26 的 Liquid Glass 设计，并提�
 4. 选择 App 与版本，然后开始下载。
 
 <p align="center">
-  <img width="640" alt="Pastel Apple 账户设置" src="https://github.com/user-attachments/assets/c9efab09-2c9e-4593-908a-f01845b88465">
+  <img width="640" alt="Pastel Apple 账户设置" src="https://github.com/user-attachments/assets/b40db4c9-3e27-4bd4-9f1e-82ed0ecc29a0">
 </p>
 
 Apple 账户密码安全地储存在 macOS 钥匙串中；会话数据经加密后储存。Pastel 使用 macOS StoreServices 完成登录和下载，因此需要搭载 Apple 芯片的实体 Mac；虚拟机不受支持。
