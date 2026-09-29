@@ -15,7 +15,7 @@
 </div>
 
 <p align="center">
-  <img width="980" alt="Pastel 主界面" src="https://github.com/user-attachments/assets/690166e2-78ad-42f8-9db2-40b79e435b71">
+  <img width="980" alt="Pastel 主界面" src="https://github.com/user-attachments/assets/2807691d-7f1d-4060-89b5-ae90839d37d5">
 </p>
 
 <br>
