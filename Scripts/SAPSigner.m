@@ -19,13 +19,30 @@ static void writeError(NSString *message) {
     [[NSFileHandle fileHandleWithStandardError] writeData:data];
 }
 
+static void writeStdout(NSString *message) {
+    NSData *data = [[message stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
+    [[NSFileHandle fileHandleWithStandardOutput] writeData:data];
+}
+
+static NSString *readLine(NSFileHandle *input) {
+    NSMutableData *line = [NSMutableData data];
+    while (true) {
+        NSData *byte = [input readDataOfLength:1];
+        if (byte.length == 0) return line.length ? [[NSString alloc] initWithData:line encoding:NSUTF8StringEncoding] : nil;
+        const uint8_t value = ((const uint8_t *)byte.bytes)[0];
+        if (value == '\n') return [[NSString alloc] initWithData:line encoding:NSUTF8StringEncoding];
+        [line appendData:byte];
+    }
+}
+
 int main(int argc, const char *argv[]) {
     (void)argc;
     (void)argv;
 
     @autoreleasepool {
-        NSData *input = [[NSFileHandle fileHandleWithStandardInput] readDataToEndOfFile];
-        if (input.length == 0) {
+        BOOL serverMode = argc > 1 && strcmp(argv[1], "--server") == 0;
+        NSData *input = serverMode ? nil : [[NSFileHandle fileHandleWithStandardInput] readDataToEndOfFile];
+        if (!serverMode && input.length == 0) {
             writeError(@"SAP signing input is empty");
             return 2;
         }
@@ -86,17 +103,36 @@ int main(int argc, const char *argv[]) {
             return 4;
         }
 
-        NSError *signingError = nil;
-        NSData *signature = [session signData:input error:&signingError];
-        [session closeSession];
-        if (signature.length == 0) {
-            writeError(signingError.localizedDescription ?: @"CommerceKit returned an empty SAP signature");
-            return 5;
+        if (serverMode) {
+            writeStdout(@"READY");
+            NSFileHandle *stdinHandle = [NSFileHandle fileHandleWithStandardInput];
+            NSString *line = nil;
+            while ((line = readLine(stdinHandle)) != nil) {
+                if ([line isEqualToString:@"CLOSE"]) break;
+                NSData *requestData = [[NSData alloc] initWithBase64EncodedString:line options:0];
+                if (requestData.length == 0) {
+                    writeStdout(@"ERROR invalid signing input");
+                    continue;
+                }
+                NSError *signingError = nil;
+                NSData *signature = [session signData:requestData error:&signingError];
+                if (signature.length == 0) {
+                    writeStdout([@"ERROR " stringByAppendingString:signingError.localizedDescription ?: @"empty signature"]);
+                    continue;
+                }
+                writeStdout([signature base64EncodedStringWithOptions:0]);
+            }
+            [session closeSession];
+        } else {
+            NSError *signingError = nil;
+            NSData *signature = [session signData:input error:&signingError];
+            [session closeSession];
+            if (signature.length == 0) {
+                writeError(signingError.localizedDescription ?: @"CommerceKit returned an empty SAP signature");
+                return 5;
+            }
+            writeStdout([signature base64EncodedStringWithOptions:0]);
         }
-
-        NSString *base64 = [signature base64EncodedStringWithOptions:0];
-        NSData *output = [[base64 stringByAppendingString:@"\n"] dataUsingEncoding:NSUTF8StringEncoding];
-        [[NSFileHandle fileHandleWithStandardOutput] writeData:output];
         return 0;
     }
 }

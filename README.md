@@ -8,7 +8,7 @@
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <a href="release-notes/20260929.1/release-notes.md">查看新功能</a>
+    <a href="release-notes/20260929.2/release-notes.md">查看新功能</a>
   </p>
   <p><sub>需要 macOS 26 或更高版本，以及搭载 Apple 芯片的 Mac。</sub></p>
   <br>
@@ -77,11 +77,11 @@ Apple 账户密码安全地储存在 macOS 钥匙串中；会话数据经加密�
 
 <br>
 
-## Pastel 20260929.1
+## Pastel 20260929.2
 
 此更新修复了从 Apple 获取 App 时版本列表可能无法载入的问题，并提高了 Apple 账户重新认证的可靠性。建议所有用户安装。
 
-[阅读完整更新日志](release-notes/20260929.1/release-notes.md)
+[阅读完整更新日志](release-notes/20260929.2/release-notes.md)
 
 <br>
 

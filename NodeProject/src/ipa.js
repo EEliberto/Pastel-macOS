@@ -3,7 +3,7 @@ import os from 'os';
 import {createCipheriv, createDecipheriv, createHash, randomBytes} from 'crypto';
 import path from 'path';
 import {Store} from './client.js';
-import {appPriceInfo, storefrontCurrentVersion} from './catalog.js';
+import {appPriceInfo, officialCurrentVersion, storefrontCurrentVersion} from './catalog.js';
 
 function versionIdentifiersFromSong(song) {
     const metadata = song?.metadata || {};
@@ -40,7 +40,7 @@ async function appInfoWithCurrentVersionFallback({
     country = 'us',
     listVersions = false,
     appInfo = Store.AppInfo.bind(Store),
-    resolveCurrentVersion = storefrontCurrentVersion,
+    resolveCurrentVersion = officialCurrentVersion,
 }) {
     try {
         return await appInfo(appId, appVerId, auth, {listVersions});

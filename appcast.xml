@@ -3,6 +3,28 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20260929.2</title>
+            <pubDate>Tue, 29 Sep 2026 21:30:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260929.2</link>
+            <sparkle:version>2026092903</sparkle:version>
+            <sparkle:shortVersionString>20260929.2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[
+此更新改进了从 Apple 获取 App 与历史版本的可靠性，并包含以下改进：
+
+• 改用 Apple 官方平台目录确认 App 的当前版本，不再依赖产品页中可能缺失的版本字段。
+• 修复部分 App 显示“Empty Apple redownload response”而无法继续的问题。
+• 更新 Apple Store 认证流程，支持原生认证端点、持久 SAP 签名会话与多端点回退。
+• 尚未获取的免费 App 可在确认后完成获取，并继续载入历史版本。
+• 改进账户会话过期后的重新认证与双重认证流程。
+
+建议所有用户安装此更新。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20260929.2/Pastel-20260929.2-build-2026092903.dmg" length="55355108" type="application/octet-stream" sparkle:edSignature="h8pOoIOcOi4JzevAiEiW9yHQroStYtZi9rhkOkH4GmvQdg2d+hltCfey1M1ZI98v1EYZjCdwfVjKjmQYmhd+Aw=="/>
+        </item>
+        <item>
             <title>20260929.1</title>
             <pubDate>Tue, 29 Sep 2026 16:50:00 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260929.1</link>

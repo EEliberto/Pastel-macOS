@@ -254,6 +254,52 @@ async function storefrontCurrentVersion(appId, {country = 'us'} = {}) {
     }
 }
 
+function extractPlatformVersion(data, appId) {
+    const item = data?.results?.[asText(appId)];
+    const offer = Array.isArray(item?.offers) ? item.offers[0] : null;
+    if (!offer) return null;
+    let versionId = asText(offer?.version?.externalId);
+    if (!/^\d+$/.test(versionId)) {
+        versionId = asText(new URLSearchParams(asText(offer.buyParams)).get('appExtVrsId'));
+    }
+    if (!/^\d+$/.test(versionId)) return null;
+    return {
+        appId: asText(appId),
+        name: asText(item.name),
+        latestVersion: asText(offer?.version?.display),
+        latestVersionId: versionId,
+        versionIds: [versionId],
+        fallbackCurrentOnly: true,
+    };
+}
+
+// Use Apple's platform catalog before parsing the public product page. Some
+// App Store pages no longer embed buyParams, while the catalog still exposes
+// the current external version ID used by StoreServices.
+async function platformCurrentVersion(appId, {country = 'us', platform = 'iphone'} = {}) {
+    const cleanCountry = asText(country).toLowerCase() || 'us';
+    const preferred = platform === 'ipad' ? 'ipad' : 'iphone';
+    const catalogs = [...new Set(['enterprisestore', preferred, 'iphone', 'ipad'])];
+    for (const catalog of catalogs) {
+        try {
+            const {data} = await catalogClient.get(
+                'https://uclient-api.itunes.apple.com/WebObjects/MZStorePlatform.woa/wa/lookup',
+                {params: {version: 2, id: appId, p: 'mdm-lockup', caller: 'MDM', platform: catalog, cc: cleanCountry, l: 'en'}}
+            );
+            const result = extractPlatformVersion(data, appId);
+            if (result) return result;
+        } catch {
+            // Try the next Apple catalog, then the public product page.
+        }
+    }
+    return null;
+}
+
+async function officialCurrentVersion(appId, options = {}) {
+    return await platformCurrentVersion(appId, options)
+        || await storefrontCurrentVersion(appId, options);
+}
+
 async function lookupApp(appId, {country = 'cn', platform = 'iphone'} = {}) {
     const cleanPlatform = normalizeSearchPlatform(platform);
     const {data} = await catalogClient.get('https://itunes.apple.com/lookup', {
@@ -543,6 +589,9 @@ export {
     featuredApps,
     appPriceInfo,
     extractStorefrontVersionId,
+    extractPlatformVersion,
+    platformCurrentVersion,
+    officialCurrentVersion,
     storefrontCurrentVersion,
     lookupApp,
     searchApps,

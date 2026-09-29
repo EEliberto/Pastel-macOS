@@ -12,9 +12,10 @@
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
-import {execFileSync} from 'child_process';
+import {execFileSync, spawn} from 'child_process';
 import {writeFileSync, readFileSync, existsSync, mkdtempSync, rmSync} from 'fs';
 import {fileURLToPath} from 'url';
+import readline from 'readline';
 import plist from 'plist';
 import {t} from './i18n.js';
 
@@ -134,6 +135,52 @@ function signAppleAction(bodyBytes) {
     }
 }
 
+class PersistentSAPSigner {
+    constructor(child, lines, stderr) {
+        this.child = child;
+        this.lines = lines;
+        this.stderr = stderr;
+    }
+
+    static async open() {
+        const signer = sapSignerPath();
+        if (!existsSync(signer)) throw new Error(`缺少 Apple SAP 签名组件：${signer}`);
+        const child = spawn(signer, ['--server'], {stdio: ['pipe', 'pipe', 'pipe']});
+        let stderr = '';
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        const lines = readline.createInterface({input: child.stdout, crlfDelay: Infinity})[Symbol.asyncIterator]();
+        const ready = await Promise.race([
+            lines.next(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Apple SAP 签名会话启动超时')), 35_000)),
+        ]);
+        if (ready.done || ready.value !== 'READY') {
+            child.kill();
+            throw new Error(`Apple SAP 签名会话启动失败：${stderr.trim() || ready.value || 'no response'}`);
+        }
+        return new PersistentSAPSigner(child, lines, () => stderr);
+    }
+
+    async sign(body) {
+        this.child.stdin.write(`${Buffer.from(body).toString('base64')}\n`);
+        const result = await Promise.race([
+            this.lines.next(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Apple SAP 签名超时')), 15_000)),
+        ]);
+        const value = String(result.value || '');
+        if (result.done || value.startsWith('ERROR ')) {
+            throw new Error(value.slice(6) || this.stderr().trim() || 'Apple SAP 签名失败');
+        }
+        const signature = Buffer.from(value, 'base64');
+        if (!signature.length) throw new Error('Apple SAP 签名为空');
+        return signature;
+    }
+
+    close() {
+        try { this.child.stdin.end('CLOSE\n'); } catch { /* ignore */ }
+    }
+}
+
 // 对齐 client.go Send() 中的 SignAction 处理
 export function buildSignedAuthenticationHeaders(baseHeaders, body, signer = signAppleAction) {
     const bodyBytes = Buffer.isBuffer(body) ? body : Buffer.from(body);
@@ -174,12 +221,20 @@ export function fetchStoreURLBag(guid) {
     return parsed?.urlBag || parsed;
 }
 
-function fetchNativeAuthEndpoint(guid) {
+function authenticationEndpoints(guid, pod = '') {
+    const endpoints = [DEFAULT_NATIVE_AUTH_BASE];
     try {
-        return authenticateURL(fetchStoreURLBag(guid)?.authenticateAccount || DEFAULT_NATIVE_AUTH_BASE);
-    } catch {
-        return DEFAULT_NATIVE_AUTH_BASE;
-    }
+        const advertised = authenticateURL(fetchStoreURLBag(guid)?.authenticateAccount || '');
+        if (advertised) endpoints.push(advertised);
+        if (advertised && !advertised.includes('?')) endpoints.push(`${advertised}?guid=${encodeURIComponent(guid)}`);
+        if (/^\d+$/.test(String(pod || '')) && advertised) {
+            const podURL = new URL(advertised);
+            if (podURL.hostname === 'buy.itunes.apple.com') podURL.hostname = `p${pod}-buy.itunes.apple.com`;
+            endpoints.push(podURL.toString());
+        }
+    } catch { /* keep native endpoint */ }
+    endpoints.push(LEGACY_AUTH_URL, `${LEGACY_AUTH_URL}?guid=${encodeURIComponent(guid)}`);
+    return [...new Set(endpoints.map(authenticateURL))];
 }
 
 // ---- 构建登录请求参数（对齐 loginRequest().Payload.Content） ----
@@ -198,14 +253,15 @@ export function buildLoginBody(email, password, code, guid, attempt) {
 
 // ---- 发送单次带 SAP 签名的 POST（不自动跟随 redirect） ----
 // 对齐 client.go NewClient() 中的 CheckRedirect: ErrUseLastResponse（auth URL 不自动跟随）
-function postWithSAP(url, body, jar) {
+async function postWithSAP(url, body, jar, signerSession) {
     const baseHeaders = {
         'User-Agent': STORE_UA,
         // 对齐 loginRequest() Headers: {"Content-Type": "application/x-www-form-urlencoded"}
         // body 是 plist XML，但 Content-Type 是 form-urlencoded（ipatool-sapfix 的准确行为）
         'Content-Type': 'application/x-www-form-urlencoded',
     };
-    const headers = buildSignedAuthenticationHeaders(baseHeaders, body);
+    const signature = await signerSession.sign(body);
+    const headers = {...baseHeaders, [HEADER_SAP_SIGNATURE]: signature.toString('base64')};
     return curlRequest('POST', url, {headers, body, follow: false, timeout: 30, jar});
 }
 
@@ -213,10 +269,10 @@ function sleepSync(milliseconds) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 }
 
-function postAuthenticationWithRetry(url, body, jar) {
+async function postAuthenticationWithRetry(url, body, jar, signerSession) {
     let response;
     for (let requestAttempt = 0; requestAttempt <= AUTH_RETRY_DELAYS_MS.length; requestAttempt++) {
-        response = postWithSAP(url, body, jar);
+        response = await postWithSAP(url, body, jar, signerSession);
         const retryable = response.status === 204
             || response.status === 404
             || response.status === 429
@@ -245,7 +301,7 @@ export function shouldRetryWithLegacyAuthenticate(endpoint, status) {
 //       parseLoginResponse(&res, attempt, authCode) -> (retry, redirect, err)
 //   }
 //
-function storePasswordAuthenticate(email, password, code, guid, jar, endpoint) {
+async function storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession) {
     let redirect = '';
     let retry = true;
     let res = null;
@@ -258,8 +314,7 @@ function storePasswordAuthenticate(email, password, code, guid, jar, endpoint) {
         const targetURL = redirect !== '' ? redirect : authenticateURL(endpoint);
         redirect = ''; // 清空，对齐：request.URL, _ = util.IfEmpty(redirect, request.URL), ""
 
-        res = postAuthenticationWithRetry(targetURL, body, jar);
-
+        res = await postAuthenticationWithRetry(targetURL, body, jar, signerSession);
         // parseLoginResponse 逻辑
         const parsed = parseLoginResponse(res, attempt, code);
         retry = parsed.retry;
@@ -351,10 +406,29 @@ export async function storeLogin(email, password, code, guid, cookieText = '', p
     if (cookieText) writeFileSync(jar, cookieText);
 
     // 从 bag.xml 获取 native 端点（对齐 Bag() 的调用方式）
-    const nativeEndpoint = fetchNativeAuthEndpoint(guid);
+    const endpoints = authenticationEndpoints(guid, pod);
 
-    // 执行登录（storePasswordAuthenticate 内部会按需 fallback 到 legacy）
-    const {res, parsed} = storePasswordAuthenticate(email, password, code, guid, jar, nativeEndpoint);
+    // 同一次登录和 2FA 验证必须保持同一个 SAP 会话；签完即关闭会使
+    // Apple 在认证前返回 204/301/403 空响应。
+    const signerSession = await PersistentSAPSigner.open();
+    let res;
+    let parsed;
+    let lastError;
+    try {
+        for (const endpoint of endpoints) {
+            try {
+                ({res, parsed} = await storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession));
+                lastError = null;
+                break;
+            } catch (error) {
+                if (error?.code === 'AUTH_OR_2FA' || error?.code === 'NEEDS_2FA') throw error;
+                lastError = error;
+            }
+        }
+        if (lastError) throw lastError;
+    } finally {
+        signerSession.close();
+    }
 
     // 构建用户信息（对齐 login() 返回 Account）
     const storeFront = headerValue(res.headers, 'x-set-apple-store-front');
