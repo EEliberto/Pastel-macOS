@@ -32,6 +32,36 @@ function versionIdentifiersFromSong(song) {
     candidates.forEach(append);
     return result;
 }
+
+async function appInfoWithCurrentVersionFallback({
+    appId,
+    appVerId = '',
+    auth,
+    country = 'us',
+    listVersions = false,
+    appInfo = Store.AppInfo.bind(Store),
+    resolveCurrentVersion = storefrontCurrentVersion,
+}) {
+    try {
+        return await appInfo(appId, appVerId, auth, {listVersions});
+    } catch (error) {
+        // Apple's unpinned redownload endpoint now commonly returns HTTP 500
+        // with an empty body. Match ipatool's current behavior: resolve the
+        // current App Store version first, then retry with an explicit version
+        // pin so updateProduct can recover the response.
+        const canRetryPinned = !appVerId && (
+            error?.code === 'EMPTY_REDOWNLOAD_RESPONSE'
+            || error?.code === 'APPINFO_EMPTY'
+            || (error?.code === 'APPINFO_FAIL' && /No Longer Available/i.test(error?.message || ''))
+        );
+        if (!canRetryPinned) throw error;
+
+        const current = await resolveCurrentVersion(appId, {country});
+        const currentVersionId = String(current?.latestVersionId || '').trim();
+        if (!/^\d+$/.test(currentVersionId)) throw error;
+        return await appInfo(appId, currentVersionId, auth, {listVersions});
+    }
+}
 import {readCookieJar, restoreCookieJar} from './gsa.js';
 import {SignatureClient} from './Signature.js';
 import {download} from './downloader.js';
@@ -216,7 +246,12 @@ export class Ipa {
     }
 
     async info(APPID, appVerId) {
-        const appInfo = await Store.AppInfo(APPID, appVerId, this.auth);
+        const appInfo = await appInfoWithCurrentVersionFallback({
+            appId: APPID,
+            appVerId,
+            auth: this.auth,
+            country: process.env.IPA_APP_COUNTRY || 'us',
+        });
         const s = appInfo?.songList?.[0];
         const name = s?.metadata?.bundleDisplayName || 'UnknownApp';
         const ver = s?.metadata?.bundleShortVersionString || 'UnknownVer';
@@ -246,7 +281,12 @@ export class Ipa {
 
     async _listVersionIdsOnce(APPID) {
         // 先直接查（已购买 / 已获取过的 App 无需再申请许可，不产生任何副作用）。
-        let song = await Store.AppInfo(APPID, '', this.auth, {listVersions: true}).catch(error => ({_error: error}));
+        let song = await appInfoWithCurrentVersionFallback({
+            appId: APPID,
+            auth: this.auth,
+            country: process.env.IPA_APP_COUNTRY || 'us',
+            listVersions: true,
+        }).catch(error => ({_error: error}));
         if (song?._error) {
             // 用稳定的 error.code 判断「缺少许可」，不依赖文案语言；Apple 自身英文消息保留兜底。
             const noLicense = song._error.code === 'LICENSE_NOT_FOUND'
@@ -271,7 +311,12 @@ export class Ipa {
             for (const delayMs of [350, 800, 1600, 3000]) {
                 await new Promise(resolve => setTimeout(resolve, delayMs));
                 try {
-                    song = await Store.AppInfo(APPID, '', this.auth, {listVersions: true});
+                    song = await appInfoWithCurrentVersionFallback({
+                        appId: APPID,
+                        auth: this.auth,
+                        country: process.env.IPA_APP_COUNTRY || 'us',
+                        listVersions: true,
+                    });
                     lastError = null;
                     break;
                 } catch (error) {
@@ -396,4 +441,4 @@ export class Ipa {
     }
 }
 
-export {DEFAULT_SESSION_TTL_MS, openSession, sealSession, versionIdentifiersFromSong};
+export {appInfoWithCurrentVersionFallback, DEFAULT_SESSION_TTL_MS, openSession, sealSession, versionIdentifiersFromSong};

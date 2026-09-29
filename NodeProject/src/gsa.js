@@ -5,7 +5,7 @@
 //   1. Content-Type: application/x-www-form-urlencoded，但 body 是 plist XML（与 ipatool-sapfix 一致）
 //   2. SAP 签名作用于 plist body，写入 X-Apple-ActionSignature header
 //   3. 302 redirect：用 attempt=1 的原始 body 重发到 Location URL（不递增 attempt）
-//   4. fallback：只有在使用 native 端点且返回 204/403/404/503 时，递归用 legacy 端点重试
+//   4. Apple 短暂返回 204、404、429 或 5xx 时，按当前 ipatool 行为重试同一签名请求
 //   5. attempt 递增：仅在 attempt==1 且 failureType==-5000（FailureTypeInvalidCredentials）时重试
 //
 // HTTP 走系统 curl（避免 Node 自带 CA 在 TLS 解密代理下失败）。
@@ -43,6 +43,7 @@ const LEGACY_AUTH_URL = 'https://buy.itunes.apple.com/WebObjects/MZFinance.woa/w
 
 // 对齐 ipatool-sapfix/pkg/appstore/appstore_login.go
 const DEFAULT_NATIVE_AUTH_BASE = 'https://auth.itunes.apple.com/auth/v1/native/fast/';
+const AUTH_RETRY_DELAYS_MS = [10_000, 20_000];
 
 // SAP signer 路径
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -208,6 +209,24 @@ function postWithSAP(url, body, jar) {
     return curlRequest('POST', url, {headers, body, follow: false, timeout: 30, jar});
 }
 
+function sleepSync(milliseconds) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+}
+
+function postAuthenticationWithRetry(url, body, jar) {
+    let response;
+    for (let requestAttempt = 0; requestAttempt <= AUTH_RETRY_DELAYS_MS.length; requestAttempt++) {
+        response = postWithSAP(url, body, jar);
+        const retryable = response.status === 204
+            || response.status === 404
+            || response.status === 429
+            || response.status >= 500;
+        if (!retryable || requestAttempt === AUTH_RETRY_DELAYS_MS.length) return response;
+        sleepSync(AUTH_RETRY_DELAYS_MS[requestAttempt]);
+    }
+    return response;
+}
+
 // ---- 判断是否应 fallback 到 legacy 端点（对齐 shouldRetryWithLegacyAuthenticate()） ----
 // 只有在使用 native endpoint（含 /native/）时才 fallback。
 export function shouldRetryWithLegacyAuthenticate(endpoint, status) {
@@ -239,12 +258,7 @@ function storePasswordAuthenticate(email, password, code, guid, jar, endpoint) {
         const targetURL = redirect !== '' ? redirect : authenticateURL(endpoint);
         redirect = ''; // 清空，对齐：request.URL, _ = util.IfEmpty(redirect, request.URL), ""
 
-        res = postWithSAP(targetURL, body, jar);
-
-        // shouldRetryWithLegacyAuthenticate：native 端点 + 204/403/404/503 → 递归用 legacy 重试
-        if (shouldRetryWithLegacyAuthenticate(endpoint, res.status)) {
-            return storePasswordAuthenticate(email, password, code, guid, jar, LEGACY_AUTH_URL);
-        }
+        res = postAuthenticationWithRetry(targetURL, body, jar);
 
         // parseLoginResponse 逻辑
         const parsed = parseLoginResponse(res, attempt, code);
