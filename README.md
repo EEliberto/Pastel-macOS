@@ -3,7 +3,7 @@
   <img src="https://github.com/user-attachments/assets/f302f5d2-730c-44d2-a2c1-63cdd75804f2" width="136" alt="Pastel 图标">
   <h1>Pastel</h1>
   <h3>下载 App 的历史版本</h3>
-  <p>在 Mac 上搜索 App、浏览版本记录，并从 Apple 获取所选版本。</p>
+  <p>在 Mac 上搜索 iOS、iPadOS 或 visionOS App 浏览版本记录，并从 Apple 获取所选版本。</p>
   <br>
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
