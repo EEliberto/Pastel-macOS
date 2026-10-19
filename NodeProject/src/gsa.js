@@ -1,12 +1,8 @@
-// Apple StoreServices 登录：直接使用原生认证端点，通过 SAP 签名（X-Apple-ActionSignature）绕过 HTTP 403。
-// 修复方案精确对齐 ipatool-sapfix（pkg/appstore/appstore_login.go）。
-//
-// 关键对齐点：
-//   1. Content-Type: application/x-www-form-urlencoded，但 body 是 plist XML（与 ipatool-sapfix 一致）
-//   2. SAP 签名作用于 plist body，写入 X-Apple-ActionSignature header
-//   3. 302 redirect：用 attempt=1 的原始 body 重发到 Location URL（不递增 attempt）
-//   4. Apple 短暂返回 204、404、429 或 5xx 时，按当前 ipatool 行为重试同一签名请求
-//   5. attempt 递增：仅在 attempt==1 且 failureType==-5000（FailureTypeInvalidCredentials）时重试
+// Apple StoreServices 登录：通过持久 SAP 会话签名，使用当前 Apple bag 的认证地址。
+// 地址规范化和重定向处理参考 majd/ipatool PR #603、#609：
+// https://github.com/majd/ipatool/pull/603
+// https://github.com/majd/ipatool/pull/609
+// 重定向保留同一份 plist、验证码和 credential attempt；仅首次 -5000 才递增 attempt。
 //
 // HTTP 走系统 curl（避免 Node 自带 CA 在 TLS 解密代理下失败）。
 import crypto from 'crypto';
@@ -39,11 +35,8 @@ const CUSTOMER_MESSAGE_ACCOUNT_DISABLED = 'Your account is disabled.';
 // 对齐 ipatool-sapfix/pkg/http/constants.go
 const HEADER_SAP_SIGNATURE = 'X-Apple-ActionSignature';
 
-// 对齐 ipatool-sapfix/pkg/appstore/appstore_login.go legacyAuthenticateEndpoint
-const LEGACY_AUTH_URL = 'https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate';
-
-// 对齐 ipatool-sapfix/pkg/appstore/appstore_login.go
-const DEFAULT_NATIVE_AUTH_BASE = 'https://auth.itunes.apple.com/auth/v1/native/fast/';
+const AUTH_PATH = '/WebObjects/MZFinance.woa/wa/authenticate';
+const MAX_AUTH_REDIRECTS = 4;
 const AUTH_RETRY_DELAYS_MS = [10_000, 20_000];
 
 // SAP signer 路径
@@ -101,7 +94,7 @@ export function curlRequest(method, url, {headers = {}, body = null, follow = fa
 }
 
 function headerValue(rawHeaders, name) {
-    const m = rawHeaders.match(new RegExp(`^${name}:\\s*(.+)$`, 'im'));
+    const m = rawHeaders.match(new RegExp(`^${name}:[^\\S\\r\\n]*([^\\r\\n]*)`, 'im'));
     return m ? m[1].trim() : '';
 }
 
@@ -191,17 +184,43 @@ export function buildSignedAuthenticationHeaders(baseHeaders, body, signer = sig
     return {...baseHeaders, [HEADER_SAP_SIGNATURE]: signature.toString('base64')};
 }
 
-// ---- URL 规范化（对齐 authenticateURL()） ----
-// Apple native 端点路径末尾必须有斜杠，否则会被 redirect/drop。
-function authenticateURL(endpoint) {
-    if (!endpoint) return endpoint;
-    if (endpoint.includes('/native/') && !endpoint.endsWith('/')) {
-        return endpoint + '/';
+function validatedAuthenticationURL(endpoint) {
+    const invalid = () => new Error('Invalid Apple Store authentication endpoint');
+    if (typeof endpoint !== 'string' || !endpoint || /[\s\\#]/.test(endpoint)) throw invalid();
+    let url;
+    try { url = new URL(endpoint); } catch { throw invalid(); }
+    if (url.protocol !== 'https:' || url.username || url.password
+        || /\/\/[^/?#]*@/.test(endpoint) || url.port
+        || !/^(?:p\d+-)?buy\.itunes\.apple\.com$/.test(url.hostname)
+        || (url.pathname !== AUTH_PATH && url.pathname !== `${AUTH_PATH}/`)) {
+        throw invalid();
     }
-    return endpoint;
+    return url;
 }
 
-// ---- bag.xml 获取 native auth 端点（对齐 Bag()） ----
+// Only normalize the initial bag URL; redirect destinations retain their path/query.
+export function normalizeAuthenticationEndpoint(endpoint) {
+    const url = validatedAuthenticationURL(endpoint);
+    url.pathname = `${AUTH_PATH}/`;
+    return url.toString();
+}
+
+function resolveAuthenticationRedirect(endpoint, location) {
+    try {
+        if (!location || /[\s\\#]/.test(location)) throw new Error();
+        const destination = new URL(location, endpoint).toString();
+        return validatedAuthenticationURL(destination).toString();
+    } catch {
+        // Do not include routing queries, response headers, or untrusted URLs in errors.
+        throw new Error('Invalid Apple Store authentication redirect');
+    }
+}
+
+function authenticationResponseError(status, detail) {
+    return new Error(`${t('store_token_failed')} (HTTP ${status}: ${detail})`);
+}
+
+// ---- bag.xml 获取 Apple 当前的 StoreServices 端点 ----
 function extractPlistText(text) {
     const start = text.indexOf('<plist');
     const end = text.indexOf('</plist>');
@@ -219,22 +238,6 @@ export function fetchStoreURLBag(guid) {
     if (status < 200 || status >= 300) throw new Error('Unable to fetch Apple URL bag');
     const parsed = plist.parse(extractPlistText(body.toString('utf8')));
     return parsed?.urlBag || parsed;
-}
-
-function authenticationEndpoints(guid, pod = '') {
-    const endpoints = [DEFAULT_NATIVE_AUTH_BASE];
-    try {
-        const advertised = authenticateURL(fetchStoreURLBag(guid)?.authenticateAccount || '');
-        if (advertised) endpoints.push(advertised);
-        if (advertised && !advertised.includes('?')) endpoints.push(`${advertised}?guid=${encodeURIComponent(guid)}`);
-        if (/^\d+$/.test(String(pod || '')) && advertised) {
-            const podURL = new URL(advertised);
-            if (podURL.hostname === 'buy.itunes.apple.com') podURL.hostname = `p${pod}-buy.itunes.apple.com`;
-            endpoints.push(podURL.toString());
-        }
-    } catch { /* keep native endpoint */ }
-    endpoints.push(LEGACY_AUTH_URL, `${LEGACY_AUTH_URL}?guid=${encodeURIComponent(guid)}`);
-    return [...new Set(endpoints.map(authenticateURL))];
 }
 
 // ---- 构建登录请求参数（对齐 loginRequest().Payload.Content） ----
@@ -283,67 +286,54 @@ async function postAuthenticationWithRetry(url, body, jar, signerSession) {
     return response;
 }
 
-// ---- 判断是否应 fallback 到 legacy 端点（对齐 shouldRetryWithLegacyAuthenticate()） ----
-// 只有在使用 native endpoint（含 /native/）时才 fallback。
-export function shouldRetryWithLegacyAuthenticate(endpoint, status) {
-    if (!endpoint.includes('/native/')) return false;
-    return [204, 403, 404, 503].includes(Number(status));
-}
+// Redirects change only the destination. Credential retries stay at the assigned pod.
+export async function storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession,
+    sendRequest = postAuthenticationWithRetry) {
+    let targetURL = normalizeAuthenticationEndpoint(endpoint);
+    let attempt = 1;
+    let redirects = 0;
+    let body = buildLoginBody(email, password, code, guid, attempt);
 
-// ---- 核心登录循环（精确对齐 login() for 循环）----
-//
-// ipatool-sapfix 逻辑：
-//   for attempt := 1; retry && attempt <= 4; attempt++ {
-//       requestAttempt = attempt
-//       if redirect != "" { requestAttempt = 1 }  // redirect 时不递增 attempt
-//       request = loginRequest(email, pwd, code, guid, endpoint, requestAttempt)
-//       request.URL = redirect || request.URL    // redirect 时用 redirect URL，清空 redirect
-//       parseLoginResponse(&res, attempt, authCode) -> (retry, redirect, err)
-//   }
-//
-async function storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession) {
-    let redirect = '';
-    let retry = true;
-    let res = null;
-
-    for (let attempt = 1; retry && attempt <= 4; attempt++) {
-        // 对齐：redirect 时 requestAttempt 保持 1，用原 body 重发
-        const requestAttempt = redirect !== '' ? 1 : attempt;
-        const body = buildLoginBody(email, password, code, guid, requestAttempt);
-
-        const targetURL = redirect !== '' ? redirect : authenticateURL(endpoint);
-        redirect = ''; // 清空，对齐：request.URL, _ = util.IfEmpty(redirect, request.URL), ""
-
-        res = await postAuthenticationWithRetry(targetURL, body, jar, signerSession);
-        // parseLoginResponse 逻辑
-        const parsed = parseLoginResponse(res, attempt, code);
-        retry = parsed.retry;
-        redirect = parsed.redirect;
+    for (;;) {
+        const res = await sendRequest(targetURL, body, jar, signerSession);
+        const parsed = parseLoginResponse(res, attempt, code, targetURL);
         if (parsed.error) throw parsed.error;
-        if (!retry) {
-            // 登录成功，返回解析出的数据
+        if (!parsed.retry) {
             return {res, parsed: parsed.data};
         }
+        if (parsed.redirect) {
+            if (redirects === MAX_AUTH_REDIRECTS) {
+                throw authenticationResponseError(res.status, 'too many authentication redirects');
+            }
+            redirects++;
+            targetURL = parsed.redirect;
+        } else {
+            attempt++;
+            body = buildLoginBody(email, password, code, guid, attempt);
+        }
     }
-
-    if (retry) {
-        // too many attempts
-        throw new Error(t('store_token_failed'));
-    }
-
-    throw new Error(t('store_token_failed'));
 }
 
 // 对齐 parseLoginResponse()
-export function parseLoginResponse(res, attempt, authCode) {
+export function parseLoginResponse(res, attempt, authCode, endpoint) {
     const status = res.status;
 
-    // 302 redirect：返回 Location，重发
-    if (status === 302 || status === 301) {
+    if (status >= 300 && status < 400) {
+        let error;
         const location = headerValue(res.headers, 'location');
-        if (location) {
-            return {retry: true, redirect: location, error: null, data: null};
+        if (![301, 302, 307, 308].includes(status)) {
+            error = authenticationResponseError(status, 'unsupported authentication redirect');
+        } else if (!location) {
+            error = authenticationResponseError(status, 'authentication redirect is missing Location');
+        } else {
+            try {
+                const redirect = resolveAuthenticationRedirect(endpoint, location);
+                return {retry: true, redirect, error: null, data: null};
+            } catch {
+                error = authenticationResponseError(status, 'invalid authentication redirect');
+            }
         }
+        return {retry: false, redirect: '', error, data: null};
     }
 
     // 非重定向但也不是成功响应，尝试解析 plist
@@ -354,7 +344,7 @@ export function parseLoginResponse(res, attempt, authCode) {
 
     if (!parsed) {
         // 无法解析 plist，视为服务端错误
-        return {retry: false, redirect: '', error: new Error(t('store_token_failed')), data: null};
+        return {retry: false, redirect: '', error: authenticationResponseError(status, 'empty or non-plist authentication response'), data: null};
     }
 
     const failureType = String(parsed.failureType || '');
@@ -405,27 +395,16 @@ export async function storeLogin(email, password, code, guid, cookieText = '', p
     const jar = path.join(tmpDir(), `store-cookies-${crypto.createHash('sha256').update(String(email || '')).digest('hex').slice(0, 12)}.txt`);
     if (cookieText) writeFileSync(jar, cookieText);
 
-    // 从 bag.xml 获取 native 端点（对齐 Bag() 的调用方式）
-    const endpoints = authenticationEndpoints(guid, pod);
+    // Use the validated current bag URL instead of probing native/legacy alternatives.
+    const endpoint = normalizeAuthenticationEndpoint(fetchStoreURLBag(guid)?.authenticateAccount);
 
     // 同一次登录和 2FA 验证必须保持同一个 SAP 会话；签完即关闭会使
     // Apple 在认证前返回 204/301/403 空响应。
     const signerSession = await PersistentSAPSigner.open();
     let res;
     let parsed;
-    let lastError;
     try {
-        for (const endpoint of endpoints) {
-            try {
-                ({res, parsed} = await storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession));
-                lastError = null;
-                break;
-            } catch (error) {
-                if (error?.code === 'AUTH_OR_2FA' || error?.code === 'NEEDS_2FA') throw error;
-                lastError = error;
-            }
-        }
-        if (lastError) throw lastError;
+        ({res, parsed} = await storePasswordAuthenticate(email, password, code, guid, jar, endpoint, signerSession));
     } finally {
         signerSession.close();
     }
