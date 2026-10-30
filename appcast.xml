@@ -3,6 +3,50 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20261030</title>
+            <pubDate>Fri, 30 Oct 2026 11:07:11 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261030</link>
+            <sparkle:version>2026103001</sparkle:version>
+            <sparkle:shortVersionString>20261030</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[
+此更新修复了部分用户近期无法登录 Apple 账户的问题，并包含以下改进：
+
+• 使用 Apple 当前服务配置返回的认证地址，不再依次尝试可能已经失效的旧地址。
+• 修复 Apple 认证地址缺少末尾斜杠时可能返回空响应或无效跳转的问题。
+• 正确处理 Apple 登录过程中的 301、302、307 和 308 跳转。
+• 登录跳转后继续保留 SAP 签名请求、Cookie、双重认证验证码和认证次数，避免商店令牌换取失败。
+• 兼容 Apple 服务配置中认证地址位于根级或 urlBag 内的两种格式。
+• 限制并验证认证跳转目标，避免将账户凭据发送到非 Apple 地址。
+
+建议所有用户安装此更新。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261030/Pastel-20261030-build-2026103001.dmg" length="55379848" type="application/octet-stream" sparkle:edSignature="P5F33S9E8MzyxngKUlZ+s/PqFdzfFQ6b88SyOge9ZOC2uwYG5Eq3OccnVg6c4759KTeHZxcMih4ledNfoYClAg=="/>
+        </item>
+        <item>
+            <title>20260929.3</title>
+            <pubDate>Tue, 29 Sep 2026 21:52:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260929.3</link>
+            <sparkle:version>2026092904</sparkle:version>
+            <sparkle:shortVersionString>20260929.3</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[
+此更新改进了从 Apple 获取历史版本时的响应与账户登录体验，并包含以下改进：
+
+• 修复选择 Apple 来源后可能持续显示载入状态的问题。
+• Apple 账户会话过期时会自动打开重新登录界面。
+• 缩短认证恢复所需的等待时间。
+• 改进 Xcode 调试构建的签名设置，减少重复的钥匙串访问确认。
+
+建议所有用户安装此更新。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20260929.3/Pastel-20260929.3-build-2026092904.dmg" length="55337235" type="application/octet-stream" sparkle:edSignature="WK7jBR43p8QBCOKJZJCQN3EvJVuB3fBuRcqx0NP8JhIXEZx8AHFSlc+0X4rAqcjZ4FvlQcMwRfiobzzsrdXRDw=="/>
+        </item>
+        <item>
             <title>20260929.2</title>
             <pubDate>Tue, 29 Sep 2026 21:30:00 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20260929.2</link>

@@ -7,7 +7,6 @@ import {
     buildLoginBody,
     buildSignedAuthenticationHeaders,
     parseLoginResponse,
-    shouldRetryWithLegacyAuthenticate,
 } from '../src/gsa.js';
 
 test('recognizes StoreServices HTTP authentication failures', () => {
@@ -78,16 +77,6 @@ test('active Store login path does not invoke GSA or Anisette', () => {
     const mainSource = readFileSync(new URL('../main.js', import.meta.url), 'utf8');
     assert.doesNotMatch(clientSource, /\bgsaLogin\b|fetchAnisette|IPA_NATIVE_ANISETTE/);
     assert.doesNotMatch(mainSource, /request-2fa|IPA_NATIVE_ANISETTE/);
-});
-
-test('falls back from native authentication statuses used by ipatool', () => {
-    for (const status of [204, 403, 404, 503]) {
-        assert.equal(shouldRetryWithLegacyAuthenticate('https://auth.itunes.apple.com/auth/v1/native/fast/', status), true, String(status));
-    }
-    for (const status of [0, 200, 302, 401, 429, 500]) {
-        assert.equal(shouldRetryWithLegacyAuthenticate('https://auth.itunes.apple.com/auth/v1/native/fast/', status), false, String(status));
-    }
-    assert.equal(shouldRetryWithLegacyAuthenticate('https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate', 403), false);
 });
 
 test('signs the exact Store authentication plist bytes for Apple', () => {
