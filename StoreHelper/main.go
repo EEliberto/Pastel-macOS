@@ -171,7 +171,7 @@ func main() {
 			progressbar.OptionSetWidth(12),
 			progressbar.OptionThrottle(250000000),
 		)
-		download, downloadErr := store.Download(appstore.DownloadInput{
+		download, downloadErr := downloadAuthorizedPackage(store, appstore.DownloadInput{
 			Context: context.Background(), Account: account, App: input.App,
 			OutputPath: input.OutputPath, ExternalVersionID: input.VersionID,
 			Platform: platform, Progress: bar,
@@ -188,6 +188,21 @@ func main() {
 	result.Account = &account
 	result.Cookies = collectCookies(jar, append(cookieURLs, storeURLs(account.Pod)...))
 	write(result, 0)
+}
+
+// Download returns the Apple archive and the account-specific FairPlay data
+// separately. Match ipatool's CLI: inject that data before reporting success.
+func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadInput) (appstore.DownloadOutput, error) {
+	output, err := store.Download(input)
+	if err != nil {
+		return appstore.DownloadOutput{}, err
+	}
+	if err := store.ReplicateSinf(appstore.ReplicateSinfInput{
+		Sinfs: output.Sinfs, PackagePath: output.DestinationPath,
+	}); err != nil {
+		return appstore.DownloadOutput{}, fmt.Errorf("failed to finalize IPA authorization: %w", err)
+	}
+	return output, nil
 }
 
 func macAddress(guid string) (string, error) {
