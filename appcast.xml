@@ -3,6 +3,32 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20261102</title>
+            <pubDate>Mon, 02 Nov 2026 08:30:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261102</link>
+            <sparkle:version>2026110201</sparkle:version>
+            <sparkle:shortVersionString>20261102</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[
+此更新优化了 Apple 账户凭据与会话的本机保护方式，解决更新 Pastel 后可能反复要求输入 Mac 登录密码的问题。
+
+• Apple 账户密码集中保存在 AES-GCM 加密保险库中，macOS Keychain 只需保护一个随机主密钥。
+• 现有账户密码、加密会话和设备标识会在需要时自动迁移，无需重新添加账户或手动导入证书。
+• 保留已有 Apple 登录会话，避免仅因存储升级而要求所有账户重新登录。
+• 正式构建使用固定发布签名身份，使 macOS 能在后续更新中持续识别同一个 Pastel。
+• 会话主密钥在单次运行期间安全缓存，减少重复访问 Keychain。
+• 改进保险库的原子写入、完整性校验与文件权限保护。
+• 继续支持 macOS 26，并保留 Node.js 24 LTS、JIT 权限和 Sparkle 更新验证。
+
+从旧版首次升级时，macOS 可能会要求授权一次以读取旧凭据；自动迁移完成后，后续更新不应再逐个账户反复询问电脑密码。
+
+建议所有用户安装此更新。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261102/Pastel-20261102-build-2026110201.dmg" length="72289364" type="application/octet-stream" sparkle:edSignature="0BnFK1WxWUA4Z6z2lHm9ir99Ff+Y295WF2J3ZzxNlhsMUBIfQ+mmsJ9StxkAAinSpblCV6hKl/MGnJu2kra2BQ=="/>
+        </item>
+        <item>
             <title>20261030</title>
             <pubDate>Fri, 30 Oct 2026 11:07:11 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261030</link>
