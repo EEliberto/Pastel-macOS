@@ -1261,6 +1261,15 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 private let credentialSaveQueue = DispatchQueue(label: "com.allenmiao.ipadownload.credentialsave", qos: .utility)
 
+#if DEBUG
+enum LoginSimulation: String, CaseIterable, Identifiable {
+    case verification = "需要验证码"
+    case ambiguous = "模糊认证失败"
+    case slow = "验证等待中取消"
+    var id: String { rawValue }
+}
+#endif
+
 @MainActor
 @Observable
 final class AccountStore {
@@ -1278,6 +1287,56 @@ final class AccountStore {
     private var pipes: (Pipe, Pipe)?
     private var validationLog = ""
     private var pending: (email: String, password: String, editingID: UUID?, country: String)?
+
+    #if DEBUG
+    var loginSimulation: LoginSimulation?
+    private var simulationTask: Task<Void, Never>?
+    private var simulationID = UUID()
+
+    func beginLoginSimulationIfNeeded() {
+        guard loginSimulation != nil else { return }
+        validate(email: "test@example.invalid", password: "simulation-only",
+                 editingID: nil, fallbackCountry: "jp")
+    }
+
+    private func runSimulatedValidation(code: String) {
+        simulationTask?.cancel()
+        let id = UUID()
+        simulationID = id
+        isValidating = true
+        needsCode = !code.isEmpty
+        validationLog = ""
+        let delay: UInt64 = loginSimulation == .slow && !code.isEmpty
+            ? 10_000_000_000 : 700_000_000
+        simulationTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: delay) } catch { return }
+            guard let self, self.simulationID == id, !Task.isCancelled else { return }
+            if code.isEmpty {
+                self.validationLog = self.loginSimulation == .ambiguous
+                    ? "[X] [AUTH] 模拟：密码错误或需要双重认证。"
+                    : "[X] [2FA] 模拟：需要验证码。"
+                self.finishValidation(exitCode: 1)
+            } else if code == "123456" {
+                self.finishValidation(exitCode: 0)
+            } else {
+                self.validationLog = code == "999999"
+                    ? "[X] 模拟：验证码已过期，请重新输入。"
+                    : "[X] 模拟：验证码不正确，请重新输入。"
+                self.finishValidation(exitCode: 1)
+            }
+        }
+    }
+    #endif
+
+    var canEnterVerificationCode: Bool {
+        pending != nil && !isValidating && !needsCode && validationLog.contains("[AUTH]")
+    }
+
+    func enterVerificationCode() {
+        guard canEnterVerificationCode else { return }
+        needsCode = true
+        validationMessage = ""
+    }
 
     var selectedAccount: StoredAccount? { accounts.first { $0.id == selectedAccountID } }
     var hasSelectedLogin: Bool {
@@ -1400,13 +1459,18 @@ final class AccountStore {
 
     func submitCode(_ code: String) {
         let clean = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty, pending != nil else { return }
-        needsCode = false
+        guard clean.count == 6, clean.allSatisfy({ $0 >= "0" && $0 <= "9" }),
+              pending != nil, !isValidating else { return }
         validationMessage = String(localized: "正在完成 Apple 账户双重认证…")
         runValidation(code: clean)
     }
 
     func cancelValidation() {
+        #if DEBUG
+        simulationTask?.cancel()
+        simulationTask = nil
+        simulationID = UUID()
+        #endif
         process?.terminate()
         cleanup()
         isValidating = false
@@ -1417,6 +1481,12 @@ final class AccountStore {
 
     private func runValidation(code: String) {
         guard let pending else { return }
+        #if DEBUG
+        if loginSimulation != nil {
+            runSimulatedValidation(code: code)
+            return
+        }
+        #endif
         let runtime: (projectURL: URL, mainURL: URL, nodeURL: URL)
         let credentialInput: (pipe: Pipe, data: Data)
         let deviceGUID: String
@@ -1432,7 +1502,7 @@ final class AccountStore {
         catch { isValidating = false; validationMessage = error.localizedDescription; return }
 
         isValidating = true
-        needsCode = false
+        needsCode = !code.isEmpty
         validationLog = ""
 
         let task = Process()
@@ -1463,6 +1533,7 @@ final class AccountStore {
             let exit = finished.terminationStatus
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 120_000_000)
+                guard self?.process === finished else { return }
                 self?.finishValidation(exitCode: exit)
             }
         }
@@ -1485,17 +1556,27 @@ final class AccountStore {
         if exitCode == 0 {
             isValidating = false
             needsCode = false
+            #if DEBUG
+            if loginSimulation != nil {
+                pending = nil
+                validationMessage = ""
+                statusMessage = "模拟验证成功；未保存账户，也未连接 Apple。"
+                saveTick += 1
+                return
+            }
+            #endif
             if saveValidated(from: log) {
                 validationMessage = ""
                 saveTick += 1
             }
         } else if ipaIsVerificationChallenge(log) {
             isValidating = false
+            let wasEnteringCode = needsCode
             needsCode = true
-            validationMessage = String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。")
+            validationMessage = wasEnteringCode
+                ? String(localized: "验证码未通过验证，请检查后重试。") : ""
         } else {
             isValidating = false
-            needsCode = false
             validationMessage = validationError(from: log)
         }
     }
@@ -2523,11 +2604,6 @@ struct ContentView: View {
             .visibilityPriority(.high)
 
             ToolbarItem(placement: .primaryAction) {
-                toolbarStarButton
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
                 toolbarSettingsButton
             }
             .sharedBackgroundVisibility(.hidden)
@@ -2535,11 +2611,6 @@ struct ContentView: View {
         } else {
             ToolbarItem(placement: .principal) {
                 floatingModeBar
-            }
-            .sharedBackgroundVisibility(.hidden)
-
-            ToolbarItem(placement: .primaryAction) {
-                toolbarStarButton
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -2571,22 +2642,6 @@ struct ContentView: View {
         .help(String(localized: "设置"))
     }
 
-    private var toolbarStarButton: some View {
-        Button {
-            openProjectPage()
-        } label: {
-            Image(systemName: "star.fill")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.yellow)
-                .frame(width: 35, height: 35)
-                .contentShape(Circle())
-                .glassEffect(.regular, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("GitHub Star")
-        .help("GitHub Star")
-    }
-
     private func showSettings() {
         openWindow(id: "settings")
     }
@@ -2594,12 +2649,6 @@ struct ContentView: View {
     private func showRelogin() {
         accountStore.requestRelogin()
         showSettings()
-    }
-
-    private func openProjectPage() {
-        if let url = URL(string: "https://github.com/EEliberto/Pastel-macOS") {
-            NSWorkspace.shared.open(url)
-        }
     }
 
     private var floatingModeBar: some View {
@@ -6838,6 +6887,9 @@ struct AccountSettingsView: View {
     @State private var editor: AccountEditorContext?
     @State private var accountPendingDeletion: StoredAccount?
     @State private var deviceGUID: String? = try? DeviceGUIDStore.current()
+    #if DEBUG
+    @State private var loginSimulation: LoginSimulation?
+    #endif
 
     var body: some View {
         SettingsContentPane(tab: .account) {
@@ -6862,6 +6914,14 @@ struct AccountSettingsView: View {
                     .help(String(localized: "添加账户"))
 
                     Spacer(minLength: 0)
+                    #if DEBUG
+                    Menu("登录流程测试") {
+                        ForEach(LoginSimulation.allCases) { scenario in
+                            Button(scenario.rawValue) { loginSimulation = scenario }
+                        }
+                    }
+                    .help("仅 Debug：使用隔离的模拟账户，不连接 Apple。")
+                    #endif
                 }
 
                 SettingsGroupBox {
@@ -6914,6 +6974,11 @@ struct AccountSettingsView: View {
             AccountEditorView(context: context)
                 .environment(accountStore)
         }
+        #if DEBUG
+        .sheet(item: $loginSimulation) { scenario in
+            LoginSimulationView(scenario: scenario)
+        }
+        #endif
         .confirmationDialog(
             String(localized: "确认删除这个 Apple 账户？"),
             isPresented: Binding(
@@ -6941,6 +7006,26 @@ struct AccountSettingsView: View {
         editor = .relogin(account)
     }
 }
+
+#if DEBUG
+private struct LoginSimulationView: View {
+    let scenario: LoginSimulation
+    @State private var store: AccountStore
+
+    init(scenario: LoginSimulation) {
+        self.scenario = scenario
+        let store = AccountStore()
+        store.loginSimulation = scenario
+        self.store = store
+    }
+
+    var body: some View {
+        AccountEditorView(context: .new)
+            .environment(store)
+            .onDisappear { store.cancelValidation() }
+    }
+}
+#endif
 
 private struct SettingsDeviceGUIDRow: View {
     let deviceGUID: String?
@@ -7139,7 +7224,6 @@ struct AccountEditorView: View {
 
     @State private var email = ""
     @State private var password = ""
-    @State private var code = ""
 
     private var editingID: UUID? { context.account?.id }
     private var canSubmit: Bool {
@@ -7147,11 +7231,20 @@ struct AccountEditorView: View {
     }
 
     var body: some View {
+        @Bindable var accountStore = accountStore
         VStack(alignment: .leading, spacing: 18) {
             Text(context.isRelogin
                  ? String(localized: "登录") + " · " + (context.account?.displayLabel ?? "")
                  : (editingID == nil ? String(localized: "添加 Apple 账户") : String(localized: "编辑 Apple 账户")))
                 .font(.title3.weight(.semibold))
+
+            #if DEBUG
+            if accountStore.loginSimulation != nil {
+                Text("登录模拟 · 不连接 Apple，不保存账户\n123456：成功；000000：错误；999999：过期")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            }
+            #endif
 
             VStack(spacing: 0) {
                 AccountEditorInputRow(title: String(localized: "Apple 账户"),
@@ -7167,30 +7260,14 @@ struct AccountEditorView: View {
                                       text: $password)
             }
             .modifier(AccountEditorBoxStyle())
+            .disabled(accountStore.needsCode || accountStore.isValidating)
 
-            if accountStore.needsCode {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。"))
-                        .font(.callout.weight(.semibold))
-                        .fixedSize(horizontal: false, vertical: true)
+            Text(String(localized: "保存前会先登录验证，并在需要时要求双重认证验证码。"))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(spacing: 0) {
-                        AccountEditorInputRow(title: String(localized: "验证码"),
-                                              prompt: String(localized: "验证码"),
-                                              kind: .code,
-                                              text: $code,
-                                              onSubmit: { accountStore.submitCode(code) })
-                    }
-                    .modifier(AccountEditorBoxStyle())
-                }
-            } else {
-                Text(String(localized: "保存前会先登录验证，并在需要时要求双重认证验证码。"))
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            if accountStore.isValidating {
+            if accountStore.isValidating && !accountStore.needsCode {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
                     Text(accountStore.validationMessage.isEmpty ? String(localized: "正在验证…") : accountStore.validationMessage)
@@ -7205,39 +7282,45 @@ struct AccountEditorView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack {
+            if accountStore.canEnterVerificationCode {
+                Button(String(localized: "已收到验证码？输入验证码")) {
+                    accountStore.enterVerificationCode()
+                }
+                .buttonStyle(.link)
+            }
+
+            HStack(spacing: 12) {
                 Spacer()
                 Button(String(localized: "取消")) {
                     accountStore.cancelValidation()
                     dismiss()
                 }
-                if accountStore.needsCode {
-                    Button(String(localized: "登录")) {
-                        code = ""
-                        accountStore.validate(email: email, password: password,
-                                              editingID: editingID, fallbackCountry: selectedCountryCode)
-                    }
-                    .disabled(!canSubmit || accountStore.isValidating)
-                    Button(String(localized: "继续")) { accountStore.submitCode(code) }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                } else {
-                    Button(context.isRelogin ? String(localized: "登录") : String(localized: "保存")) {
-                        accountStore.validate(email: email, password: password,
-                                              editingID: editingID, fallbackCountry: selectedCountryCode)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSubmit || accountStore.isValidating)
+                Button(context.isRelogin ? String(localized: "登录") : String(localized: "保存")) {
+                    accountStore.validate(email: email, password: password,
+                                          editingID: editingID, fallbackCountry: selectedCountryCode)
                 }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSubmit || accountStore.isValidating || accountStore.needsCode)
             }
         }
         .padding(24)
         .frame(width: 520)
+        .sheet(isPresented: $accountStore.needsCode) {
+            AccountVerificationView()
+                .environment(accountStore)
+                .interactiveDismissDisabled()
+        }
         .onAppear {
             accountStore.validationMessage = ""
             accountStore.needsCode = false
+            #if DEBUG
+            if accountStore.loginSimulation != nil {
+                email = "test@example.invalid"
+                password = "simulation-only"
+                accountStore.beginLoginSimulationIfNeeded()
+            }
+            #endif
             if let account = context.account {
                 email = account.appleAccount
                 password = account.password
@@ -7247,6 +7330,68 @@ struct AccountEditorView: View {
             }
         }
         .onChange(of: accountStore.saveTick) { _, _ in dismiss() }
+    }
+}
+
+struct AccountVerificationView: View {
+    @Environment(AccountStore.self) private var accountStore
+    @Environment(\.dismiss) private var dismiss
+    @State private var code = ""
+    @FocusState private var codeFocused: Bool
+
+    private var canSubmit: Bool {
+        let clean = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.count == 6 && clean.allSatisfy { $0 >= "0" && $0 <= "9" }
+            && !accountStore.isValidating
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text(String(localized: "双重认证"))
+                .font(.title3.weight(.semibold))
+            #if DEBUG
+            if accountStore.loginSimulation != nil {
+                Text("模拟验证码：123456 成功，000000 错误，999999 过期。")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+            }
+            #endif
+            Text(String(localized: "请输入 Apple 双重认证的六位验证码。如果没有收到，请在受信任设备的“登录与安全性”中获取。"))
+                .fixedSize(horizontal: false, vertical: true)
+            TextField(String(localized: "验证码"), text: $code)
+                .textContentType(.oneTimeCode)
+                .textFieldStyle(.roundedBorder)
+                .focused($codeFocused)
+                .disabled(accountStore.isValidating)
+                .onSubmit { if canSubmit { accountStore.submitCode(code) } }
+            if accountStore.isValidating {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(String(localized: "正在完成 Apple 账户双重认证…"))
+                        .font(.caption)
+                }
+            } else if !accountStore.validationMessage.isEmpty {
+                Text(accountStore.validationMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 12) {
+                Spacer()
+                Button(String(localized: "取消")) {
+                    accountStore.cancelValidation()
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+                Button(String(localized: "确认")) { accountStore.submitCode(code) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSubmit)
+            }
+        }
+        .padding(24)
+        .frame(width: 420)
+        .defaultFocus($codeFocused, true)
     }
 }
 
