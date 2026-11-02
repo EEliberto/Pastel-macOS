@@ -108,8 +108,6 @@ async function runCommand(command, args) {
             return;
         }
 
-        await app.login();
-
         // 兜底模式：只登录并从 Apple 元数据取版本 ID 列表，不下载。
         if (process.env.IPA_LIST_VERSION_IDS) {
             const result = await app.listVersionIds(requiredEnv('DOWNLOAD_APPID'));
@@ -127,6 +125,9 @@ async function runCommand(command, args) {
         console.log('@@IPA:result=success');
         console.log(t('all_done'));
     } catch (err) {
+        if (err?.code === 'AUTH_REQUIRED' || err?.code === 'TOKEN_EXPIRED') {
+            console.error('@@IPA:auth_required=1');
+        }
         console.error(err.message || String(err));
         process.exitCode = 1;
     } finally {

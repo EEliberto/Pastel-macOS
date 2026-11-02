@@ -8,7 +8,7 @@
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <a href="release-notes/20261030/release-notes.md">查看新功能</a>
+    <a href="release-notes/20261102/release-notes.md">查看新功能</a>
   </p>
   <p><sub>需要 macOS 26 或更高版本，以及搭载 Apple 芯片的 Mac。</sub></p>
   <br>
@@ -73,15 +73,15 @@ Pastel 使用 SwiftUI 构建，采用 Apple 的最新 Liquid Glass 设计语言�
   <img width="640" alt="Pastel Apple 账户设置" src="https://github.com/user-attachments/assets/b40db4c9-3e27-4bd4-9f1e-82ed0ecc29a0">
 </p>
 
-Apple 账户密码安全地储存在 macOS 钥匙串中；会话数据经加密后储存。Pastel 使用 macOS StoreServices 完成登录和下载，因此需要搭载 Apple 芯片的实体 Mac；虚拟机不受支持。
+Apple 账户密码与会话数据使用 AES-GCM 加密保存，主密钥由 macOS Keychain 保护。Pastel 使用 macOS StoreServices 完成登录和下载，因此需要搭载 Apple 芯片的实体 Mac；虚拟机不受支持。
 
 <br>
 
-## Pastel 20261030
+## Pastel 20261102
 
-此更新修复了部分用户近期无法登录 Apple 账户、认证跳转后商店令牌换取失败的问题。建议所有用户安装。
+此更新优化了凭据保险库与发布签名，解决更新后可能反复要求输入 Mac 登录密码的问题。建议所有用户安装。
 
-[阅读完整更新日志](release-notes/20261030/release-notes.md)
+[阅读完整更新日志](release-notes/20261102/release-notes.md)
 
 <br>
 

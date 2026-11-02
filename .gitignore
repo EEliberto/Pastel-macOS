@@ -28,6 +28,9 @@ yarn-error.log*
 
 # Local release secrets
 SPARKLE_SIGNING_KEY.md
+*.p12
+*.pem
+*.key
 
 # Local build workspace
 work/

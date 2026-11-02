@@ -28,13 +28,11 @@ test('downloads check the existing license before entering the acquisition fallb
     const source = readFileSync(new URL('../src/ipa.js', import.meta.url), 'utf8');
     const runDownload = source.match(/async runDownload\([\s\S]*?\n    async run\(/)?.[0] || '';
     assert.notEqual(runDownload, '');
-    assert.match(runDownload, /const song = await this\.downloadInfo\(APPID, appVerId\)/);
-
-    const downloadInfo = source.match(/async downloadInfo\([\s\S]*?\n    async run\(/)?.[0] || '';
-    assert.notEqual(downloadInfo, '');
-    assert.match(downloadInfo, /return await this\.info\(APPID, appVerId\)/);
-    assert.match(downloadInfo, /if \(!noLicense\) throw error/);
-    assert.match(downloadInfo, /@@IPA:requires-acquisition/);
-    assert.match(downloadInfo, /IPA_ALLOW_APP_ACQUIRE/);
-    assert.match(downloadInfo, /Store\.purchase\(APPID, '', this\.auth\)/);
+    const firstDownload = runDownload.indexOf("helperRequest('download'");
+    const purchase = runDownload.indexOf("helperRequest('purchase'");
+    assert.ok(firstDownload >= 0);
+    assert.ok(purchase > firstDownload);
+    assert.match(runDownload, /error\.code !== 'LICENSE_REQUIRED'/);
+    assert.match(runDownload, /@@IPA:requires-acquisition/);
+    assert.match(runDownload, /IPA_ALLOW_APP_ACQUIRE/);
 });

@@ -1,8 +1,9 @@
 import plist from 'plist';
-import {storeLogin, curlRequest, parsePlistLoose, STORE_USER_AGENT, cleanup, fetchStoreURLBag} from './gsa.js';
+import {curlRequest, parsePlistLoose, STORE_USER_AGENT, cleanup, fetchStoreURLBag} from './gsa.js';
 import {recoverRedownload, shouldTryRedownload} from './download-recovery.js';
 import {getDeviceGuid} from './device.js';
 import {t} from './i18n.js';
+import {helperUser, runStoreHelper} from './store-helper.js';
 
 class ApiError extends Error {
     constructor(message, failureType, customerMessage) {
@@ -120,9 +121,36 @@ class Store {
     // GSA/Anisette，因此不会创建模拟 Mac 设备记录。
     static async login(email, password, mfa, previousSession = null) {
         try {
-            return await storeLogin(email, password, mfa, this.guid, previousSession?.cookieText || '', previousSession?.pod || '');
+            const result = await runStoreHelper({
+                command: 'login',
+                email,
+                password,
+                code: mfa || '',
+                guid: this.guid,
+            });
+            return helperUser(result, email);
         } catch (error) {
             const msg = error.message || String(error);
+            if (error.code === 'AUTH_CODE_REQUIRED') {
+                const e = new Error(t('login_2fa'));
+                e.code = 'NEEDS_2FA';
+                throw e;
+            }
+            if (error.code === 'AUTH_FAILED') {
+                const e = new Error(t('login_auth_or_2fa'));
+                e.code = 'AUTH_OR_2FA';
+                throw e;
+            }
+            if (error.code === 'SAP_UNAVAILABLE') {
+                const e = new Error(msg);
+                e.code = 'SAP_UNAVAILABLE';
+                throw e;
+            }
+            if (error.code === 'AUTH_TRANSIENT') {
+                const e = new Error(msg);
+                e.code = 'AUTH_TRANSIENT';
+                throw e;
+            }
             if (error.code === 'AUTH_OR_2FA') {
                 const e = new Error(t('login_auth_or_2fa'));
                 e.code = 'AUTH_OR_2FA';
@@ -134,7 +162,9 @@ class Store {
                 e.code = 'NEEDS_2FA';
                 throw e;
             }
-            throw new Error(t('login_auth_failed', {msg}));
+            const e = new Error(`[AUTH] ${t('login_auth_failed', {msg})}`);
+            e.code = 'AUTH_REQUIRED';
+            throw e;
         }
     }
 
@@ -152,7 +182,12 @@ class Store {
             e.code = 'STORE_FAIL';
             throw e;
         }
-        if (isAuthFailureResponse('', '', res.status)) throw tokenExpiredError();
+        // StoreServices also uses HTTP 403 for an account that does not yet
+        // own an App. Preserve a structured plist response so AppInfo can
+        // distinguish a missing license from an expired session. A bare 403
+        // (or an unreadable 403 body) still means the cached session is no
+        // longer usable.
+        if (res.status === 401) throw tokenExpiredError();
         if (redownload && res.status === 500 && res.body.length === 0) {
             const error = new Error('Empty Apple redownload response');
             error.code = 'EMPTY_REDOWNLOAD_RESPONSE';
@@ -161,6 +196,7 @@ class Store {
         try {
             return {...parsePlistLoose(res.body, t('ctx_resp')), _httpStatus: res.status};
         } catch (error) {
+            if (res.status === 403) throw tokenExpiredError();
             const e = new Error(`${prefix}${t('bad_format_suffix', {message: error.message})}`);
             e.code = 'STORE_FAIL';
             throw e;

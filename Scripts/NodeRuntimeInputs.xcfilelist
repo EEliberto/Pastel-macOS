@@ -11,10 +11,13 @@ $(SRCROOT)/NodeProject/src/download-recovery.js
 $(SRCROOT)/NodeProject/src/gsa.js
 $(SRCROOT)/NodeProject/src/i18n.js
 $(SRCROOT)/NodeProject/src/ipa.js
+$(SRCROOT)/NodeProject/src/store-helper.js
 $(SRCROOT)/node/bin/node.gz
+$(SRCROOT)/node/bin/store-helper.gz
 $(SRCROOT)/node/lib/node_modules/npm/package.json
 $(SRCROOT)/Scripts/SAPSigner.m
 $(SRCROOT)/Scripts/NodeJIT.entitlements
+$(SRCROOT)/Scripts/StoreHelper.entitlements
 $(SRCROOT)/Scripts/BundleNodeRuntime.sh
 $(SRCROOT)/Scripts/VerifyDeviceGUIDImplementation.sh
 $(SRCROOT)/Scripts/PatchSparkleLocalizations.sh

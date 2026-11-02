@@ -5,6 +5,7 @@ import {
     normalizeAuthenticationEndpoint,
     parseLoginResponse,
     parseStoreURLBag,
+    sapConfigurationFromBag,
     storePasswordAuthenticate,
 } from '../src/gsa.js';
 
@@ -41,6 +42,29 @@ test('reads authentication endpoints from root and nested Apple bag layouts', ()
     }));
     assert.equal(root.authenticateAccount, rootEndpoint);
     assert.equal(root.redownloadProduct, 'nested-download');
+});
+
+test('accepts only the current Apple SAP configuration', () => {
+    const expected = {
+        setupURL: 'https://fpinit.itunes.apple.com/v1/signSapSetup/legacy',
+        certificateURL: 'https://s.mzstatic.com/sap/setupCert.plist',
+        version: '200',
+    };
+    assert.deepEqual(sapConfigurationFromBag({
+        'sign-sap-setup': expected.setupURL,
+        'sign-sap-setup-cert': expected.certificateURL,
+        'sign-sap-version': expected.version,
+    }), expected);
+
+    for (const bag of [
+        {},
+        {'sign-sap-setup': 'http://fpinit.itunes.apple.com/v1/signSapSetup/legacy', 'sign-sap-setup-cert': expected.certificateURL, 'sign-sap-version': '200'},
+        {'sign-sap-setup': 'https://evil.test/v1/signSapSetup/legacy', 'sign-sap-setup-cert': expected.certificateURL, 'sign-sap-version': '200'},
+        {'sign-sap-setup': expected.setupURL, 'sign-sap-setup-cert': 'https://evil.test/sap/setupCert.plist', 'sign-sap-version': '200'},
+        {'sign-sap-setup': expected.setupURL, 'sign-sap-setup-cert': expected.certificateURL, 'sign-sap-version': '201'},
+    ]) {
+        assert.throws(() => sapConfigurationFromBag(bag), error => error.code === 'SAP_UNAVAILABLE');
+    }
 });
 
 test('rejects unsupported bag destinations before sending credentials', async () => {

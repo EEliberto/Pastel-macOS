@@ -562,42 +562,42 @@
         }
       }
     },
-    "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。" : {
+    "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple cannot distinguish an incorrect password from a two-factor authentication challenge. Check the password first; if you received a code, you can enter it instead."
+            "value" : "Apple requires a two-factor authentication code. Apple may not send one automatically; get a six-digit code from Sign-In & Security on a trusted device."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appleの応答では、パスワードの誤りと2ファクタ認証を区別できません。まずパスワードを確認し、コードを受信済みの場合は入力してください。"
+            "value" : "Appleには2ファクタ認証コードが必要です。コードが自動送信されない場合は、信頼済みデバイスの「サインインとセキュリティ」から6桁のコードを取得してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 응답만으로는 잘못된 암호와 이중 인증을 구분할 수 없습니다. 먼저 암호를 확인하고, 코드를 받았다면 입력하세요."
+            "value" : "Apple 이중 인증 코드가 필요합니다. 코드가 자동으로 전송되지 않으면 신뢰하는 기기의 ‘로그인 및 보안’에서 6자리 코드를 받으세요."
           }
         },
         "th" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "การตอบกลับของ Apple ไม่สามารถแยกรหัสผ่านที่ไม่ถูกต้องออกจากการยืนยันสองชั้นได้ โปรดตรวจสอบรหัสผ่านก่อน หรือป้อนรหัสหากได้รับแล้ว"
+            "value" : "Apple ต้องใช้รหัสการยืนยันสองชั้น หากไม่ได้รับรหัสโดยอัตโนมัติ ให้ขอรหัสหกหลักจาก “การลงชื่อเข้าและความปลอดภัย” บนอุปกรณ์ที่เชื่อถือได้"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 無法區分密碼錯誤與雙重驗證。請檢查密碼；如果已收到驗證碼，也可以直接輸入。"
+            "value" : "Apple 需要雙重驗證碼。Apple 不一定會自動推送驗證碼；請在受信任裝置的「登入與安全性」中取得六位數驗證碼。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 無法區分密碼錯誤與雙重認證。請檢查密碼；如果已收到驗證碼，也可以直接輸入。"
+            "value" : "Apple 需要雙重認證驗證碼。Apple 不一定會自動推送驗證碼；請在受信任裝置的「登入與保安」中取得六位數驗證碼。"
           }
         }
       }
@@ -728,42 +728,42 @@
         }
       }
     },
-    "Apple 账户密码存储在 macOS Keychain 中，本机只保存账户名称和地区等非敏感设置。" : {
+    "Apple 账户密码使用 Keychain 中的主密钥进行 AES-GCM 加密；本机仅保存加密保险库和非敏感设置。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple account passwords are stored in macOS Keychain. Pastel only keeps non-sensitive settings such as account names and regions on this Mac."
+            "value" : "Apple account passwords are encrypted with AES-GCM using a master key in Keychain. Only the encrypted vault and non-sensitive settings are stored on this Mac."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "AppleアカウントのパスワードはmacOS Keychainに保存されます。このMacにはアカウント名や地域などの機密性の低い設定のみ保存されます。"
+            "value" : "Appleアカウントのパスワードは、Keychain内のマスターキーを使用してAES-GCMで暗号化されます。このMacには暗号化された保管庫と機密性の低い設定のみ保存されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 계정 암호는 macOS Keychain에 저장됩니다. 이 Mac에는 계정 이름과 지역 같은 민감하지 않은 설정만 저장됩니다."
+            "value" : "Apple 계정 암호는 Keychain의 마스터 키를 사용해 AES-GCM으로 암호화됩니다. 이 Mac에는 암호화된 보관함과 민감하지 않은 설정만 저장됩니다."
           }
         },
         "th" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "รหัสผ่านบัญชี Apple จะถูกจัดเก็บใน macOS Keychain และในเครื่องนี้จะเก็บเฉพาะการตั้งค่าที่ไม่ละเอียดอ่อน เช่น ชื่อบัญชีและภูมิภาค"
+            "value" : "รหัสผ่านบัญชี Apple จะเข้ารหัสด้วย AES-GCM โดยใช้มาสเตอร์คีย์ใน Keychain และจัดเก็บเฉพาะคลังที่เข้ารหัสกับการตั้งค่าที่ไม่ละเอียดอ่อนบน Mac เครื่องนี้"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 帳戶密碼會儲存在 macOS Keychain 中，本機只保存帳戶名稱和地區等非敏感設定。"
+            "value" : "Apple 帳戶密碼會使用 Keychain 中的主密鑰進行 AES-GCM 加密；本機只保存加密保險庫和非敏感設定。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 帳戶密碼會儲存在 macOS Keychain 中，本機只保存帳戶名稱和地區等非敏感設定。"
+            "value" : "Apple 帳戶密碼會使用 Keychain 中的主密鑰進行 AES-GCM 加密；本機只保存加密保險庫和非敏感設定。"
           }
         }
       }
@@ -1787,36 +1787,36 @@
         }
       }
     },
-    "使用 Keychain 保护" : {
+    "Keychain 与 AES-GCM 保护" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Protected with Keychain"
+            "value" : "Protected by Keychain and AES-GCM"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keychainで保護"
+            "value" : "KeychainとAES-GCMで保護"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keychain으로 보호됨"
+            "value" : "Keychain 및 AES-GCM으로 보호됨"
           }
         },
         "th" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ปกป้องด้วย Keychain"
+            "value" : "ปกป้องด้วย Keychain และ AES-GCM"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用 Keychain 保護"
+            "value" : "使用 Keychain 與 AES-GCM 保護"
           }
         }
       }

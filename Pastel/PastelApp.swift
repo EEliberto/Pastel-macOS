@@ -196,6 +196,7 @@ private struct LegacyStoredCredentials: Codable {
 enum CredentialVaultError: LocalizedError {
     case keychainOperationFailed(String, OSStatus)
     case invalidLegacyKeyData
+    case invalidVaultData
 
     var errorDescription: String? {
         switch self {
@@ -203,6 +204,8 @@ enum CredentialVaultError: LocalizedError {
             return String(localized: "Keychain \(operation) 失败：\(Int(status))")
         case .invalidLegacyKeyData:
             return String(localized: "旧版凭据密钥无效")
+        case .invalidVaultData:
+            return String(localized: "凭据保险库无效或已损坏")
         }
     }
 }
@@ -218,19 +221,44 @@ private enum DeviceGUIDStore {
     ]
 
     static func current() throws -> String {
-        if let saved = load() {
+        if let saved = loadFile() {
             return saved
         }
 
-        guard let value = systemIdentifier() else {
-            throw DeviceGUIDError.unavailable
+        if let value = systemIdentifier() {
+            try saveFile(value)
+            return value
         }
 
-        try save(value)
-        return value
+        if let legacy = loadLegacyKeychain() {
+            try saveFile(legacy)
+            return legacy
+        }
+
+        throw DeviceGUIDError.unavailable
     }
 
-    private static func load() -> String? {
+    private static func loadFile() -> String? {
+        guard let data = try? Data(contentsOf: fileURL),
+              let value = String(data: data, encoding: .utf8),
+              let normalized = normalized(value) else {
+            return nil
+        }
+        return normalized
+    }
+
+    private static func saveFile(_ value: String) throws {
+        guard let normalized = normalized(value) else {
+            throw DeviceGUIDError.unavailable
+        }
+        let directory = fileURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
+        try Data(normalized.utf8).write(to: fileURL, options: [.atomic])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+    }
+
+    private static func loadLegacyKeychain() -> String? {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -253,30 +281,12 @@ private enum DeviceGUIDStore {
         return normalized
     }
 
-    private static func save(_ value: String) throws {
-        guard let normalized = normalized(value) else {
-            throw DeviceGUIDError.unavailable
-        }
-        let data = Data(normalized.utf8)
-        let update: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrDescription as String: "Pastel StoreServices Device GUID"
-        ]
-
-        let updateStatus = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
-        if updateStatus == errSecSuccess { return }
-        guard updateStatus == errSecItemNotFound else {
-            throw CredentialVaultError.keychainOperationFailed("更新", updateStatus)
-        }
-
-        var addQuery = baseQuery
-        addQuery[kSecValueData as String] = data
-        addQuery[kSecAttrDescription as String] = "Pastel StoreServices Device GUID"
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        guard addStatus == errSecSuccess else {
-            throw CredentialVaultError.keychainOperationFailed("写入", addStatus)
-        }
+    private static var fileURL: URL {
+        let baseURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        return baseURL
+            .appendingPathComponent(appDisplayName, isDirectory: true)
+            .appendingPathComponent("device-guid")
     }
 
     private static var baseQuery: [String: Any] {
@@ -389,38 +399,17 @@ private struct StoredCredentialsMetadata: Codable {
     }
 }
 
+private struct PasswordVaultPayload: Codable, Equatable {
+    var passwords: [String: String]
+}
+
+private struct PasswordVaultEnvelope: Codable {
+    let version: Int
+    let sealedData: Data
+}
+
 private enum KeychainPasswordStore {
     private static let service = "com.allenmiao.ipahistorydownload.apple-account-password"
-
-    static func savePassword(_ password: String, for account: StoredAccount) throws {
-        let passwordData = Data(password.utf8)
-        let query = baseQuery(for: account.id)
-        let update: [String: Any] = [
-            kSecValueData as String: passwordData,
-            kSecAttrLabel as String: account.displayLabel,
-            kSecAttrDescription as String: "Pastel Apple account password"
-        ]
-
-        let updateStatus = SecItemUpdate(query as CFDictionary, update as CFDictionary)
-        if updateStatus == errSecSuccess {
-            return
-        }
-
-        guard updateStatus == errSecItemNotFound else {
-            throw CredentialVaultError.keychainOperationFailed("更新", updateStatus)
-        }
-
-        var addQuery = query
-        addQuery[kSecValueData as String] = passwordData
-        addQuery[kSecAttrLabel as String] = account.displayLabel
-        addQuery[kSecAttrDescription as String] = "Pastel Apple account password"
-        addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-
-        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
-        guard addStatus == errSecSuccess else {
-            throw CredentialVaultError.keychainOperationFailed("写入", addStatus)
-        }
-    }
 
     static func loadPassword(for accountID: UUID) throws -> String {
         var query = baseQuery(for: accountID)
@@ -470,10 +459,19 @@ private enum KeychainPasswordStore {
 }
 
 private enum SessionEncryptionKeyStore {
-    private static let service = "com.allenmiao.ipahistorydownload.session-encryption"
-    private static let account = "NodeSessionStorage"
+    private static let service = "com.allenmiao.ipahistorydownload.credential-vault-master-key"
+    private static let account = "CredentialVaultV1"
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cachedKey: Data?
 
     static func loadOrCreateKey() throws -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let cachedKey {
+            return cachedKey
+        }
+
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -481,30 +479,69 @@ private enum SessionEncryptionKeyStore {
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecSuccess, let data = result as? Data, data.count == 32 {
+            cachedKey = data
             return data
         }
         guard status == errSecItemNotFound || status == errSecSuccess else {
             throw CredentialVaultError.keychainOperationFailed("读取会话密钥", status)
         }
 
-        var bytes = [UInt8](repeating: 0, count: 32)
-        let randomStatus = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
-        guard randomStatus == errSecSuccess else {
-            throw CredentialVaultError.keychainOperationFailed("生成会话密钥", randomStatus)
+        var legacyQuery = legacyBaseQuery
+        legacyQuery[kSecReturnData as String] = true
+        legacyQuery[kSecMatchLimit as String] = kSecMatchLimitOne
+        var legacyResult: CFTypeRef?
+        let legacyStatus = SecItemCopyMatching(legacyQuery as CFDictionary, &legacyResult)
+
+        let data: Data
+        if legacyStatus == errSecSuccess,
+           let legacyData = legacyResult as? Data,
+           legacyData.count == 32 {
+            // Preserve existing encrypted sessions. The copied item is owned by
+            // the stable release signature, so this legacy access happens once.
+            data = legacyData
+        } else {
+            guard legacyStatus == errSecItemNotFound || legacyStatus == errSecSuccess else {
+                throw CredentialVaultError.keychainOperationFailed("读取旧版会话密钥", legacyStatus)
+            }
+            var bytes = [UInt8](repeating: 0, count: 32)
+            let randomStatus = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+            guard randomStatus == errSecSuccess else {
+                throw CredentialVaultError.keychainOperationFailed("生成会话密钥", randomStatus)
+            }
+            data = Data(bytes)
         }
-        let data = Data(bytes)
+
         var addQuery = baseQuery
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrDescription as String] = "Pastel encrypted Apple session storage key"
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
         if addStatus == errSecDuplicateItem {
-            return try loadOrCreateKey()
+            var retryResult: CFTypeRef?
+            let retryStatus = SecItemCopyMatching(query as CFDictionary, &retryResult)
+            guard retryStatus == errSecSuccess,
+                  let existing = retryResult as? Data,
+                  existing.count == 32 else {
+                throw CredentialVaultError.keychainOperationFailed("读取会话密钥", retryStatus)
+            }
+            cachedKey = existing
+            return existing
         }
         guard addStatus == errSecSuccess else {
             throw CredentialVaultError.keychainOperationFailed("写入会话密钥", addStatus)
         }
+        cachedKey = data
         return data
+    }
+
+    static func deleteKey() throws {
+        lock.lock()
+        defer { lock.unlock() }
+        let status = SecItemDelete(baseQuery as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw CredentialVaultError.keychainOperationFailed("删除会话密钥", status)
+        }
+        cachedKey = nil
     }
 
     private static var baseQuery: [String: Any] {
@@ -514,23 +551,48 @@ private enum SessionEncryptionKeyStore {
             kSecAttrAccount as String: account
         ]
     }
+
+    private static var legacyBaseQuery: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.allenmiao.ipahistorydownload.session-encryption",
+            kSecAttrAccount as String: "NodeSessionStorage"
+        ]
+    }
 }
 
 enum CredentialVault {
+    private static let lock = NSLock()
+    private static let vaultVersion = 1
+    private static let vaultAuthenticationData = Data("PastelCredentialVault:v1".utf8)
+
     static func save(_ credentials: StoredCredentials) throws {
+        lock.lock()
+        defer { lock.unlock() }
         try prepareDirectory()
 
         let normalized = credentials.normalized
+        var passwords = try loadVaultPasswordsIfPresent()
+        var migratedAccountIDs: [UUID] = []
         for account in normalized.accounts {
             if !account.password.isEmpty {
-                try KeychainPasswordStore.savePassword(account.password, for: account)
+                passwords[account.id.uuidString] = account.password
+                migratedAccountIDs.append(account.id)
             }
+        }
+        let validAccountIDs = Set(normalized.accounts.map { $0.id.uuidString })
+        passwords = passwords.filter { validAccountIDs.contains($0.key) }
+        if !passwords.isEmpty || FileManager.default.fileExists(atPath: vaultURL.path) {
+            try saveVaultPasswords(passwords)
         }
 
         let metadata = StoredCredentialsMetadata(normalized)
         let payload = try JSONEncoder().encode(metadata)
         try payload.write(to: metadataURL, options: [.atomic])
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: metadataURL.path)
+        for accountID in migratedAccountIDs {
+            try KeychainPasswordStore.deletePassword(for: accountID)
+        }
         try? deleteLegacyEncryptedFiles()
     }
 
@@ -557,18 +619,45 @@ enum CredentialVault {
     }
 
     static func deleteStoredCredentials() throws {
+        lock.lock()
+        defer { lock.unlock() }
         if FileManager.default.fileExists(atPath: metadataURL.path) {
             try FileManager.default.removeItem(at: metadataURL)
         }
+        if FileManager.default.fileExists(atPath: vaultURL.path) {
+            try FileManager.default.removeItem(at: vaultURL)
+        }
         try KeychainPasswordStore.deleteAllPasswords()
+        try SessionEncryptionKeyStore.deleteKey()
         try? deleteLegacyEncryptedFiles()
     }
 
     static func loadPassword(for accountID: UUID) throws -> String {
-        try KeychainPasswordStore.loadPassword(for: accountID)
+        lock.lock()
+        defer { lock.unlock() }
+
+        var passwords = try loadVaultPasswordsIfPresent()
+        if let password = passwords[accountID.uuidString] {
+            return password
+        }
+
+        let legacyPassword = try KeychainPasswordStore.loadPassword(for: accountID)
+        guard !legacyPassword.isEmpty else { return "" }
+
+        passwords[accountID.uuidString] = legacyPassword
+        try saveVaultPasswords(passwords)
+        try KeychainPasswordStore.deletePassword(for: accountID)
+        return legacyPassword
     }
 
     static func deletePassword(for accountID: UUID) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if FileManager.default.fileExists(atPath: vaultURL.path) {
+            var passwords = try loadVaultPasswordsIfPresent()
+            passwords.removeValue(forKey: accountID.uuidString)
+            try saveVaultPasswords(passwords)
+        }
         try KeychainPasswordStore.deletePassword(for: accountID)
     }
 
@@ -578,6 +667,10 @@ enum CredentialVault {
 
     private static var metadataURL: URL {
         applicationSupportURL.appendingPathComponent("accounts.json")
+    }
+
+    private static var vaultURL: URL {
+        applicationSupportURL.appendingPathComponent("credentials.vault")
     }
 
     private static var credentialsURL: URL {
@@ -597,6 +690,55 @@ enum CredentialVault {
     private static func prepareDirectory() throws {
         try FileManager.default.createDirectory(at: applicationSupportURL, withIntermediateDirectories: true)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: applicationSupportURL.path)
+    }
+
+    private static func loadVaultPasswordsIfPresent() throws -> [String: String] {
+        guard FileManager.default.fileExists(atPath: vaultURL.path) else { return [:] }
+        let keyData = try SessionEncryptionKeyStore.loadOrCreateKey()
+        return try loadVaultPasswords(using: keyData)
+    }
+
+    private static func loadVaultPasswords(using keyData: Data) throws -> [String: String] {
+        let envelopeData = try Data(contentsOf: vaultURL)
+        let envelope = try JSONDecoder().decode(PasswordVaultEnvelope.self, from: envelopeData)
+        guard envelope.version == vaultVersion else {
+            throw CredentialVaultError.invalidVaultData
+        }
+        let sealedBox = try AES.GCM.SealedBox(combined: envelope.sealedData)
+        let plaintext: Data
+        do {
+            plaintext = try AES.GCM.open(
+                sealedBox,
+                using: SymmetricKey(data: keyData),
+                authenticating: vaultAuthenticationData
+            )
+        } catch {
+            throw CredentialVaultError.invalidVaultData
+        }
+        return try JSONDecoder().decode(PasswordVaultPayload.self, from: plaintext).passwords
+    }
+
+    private static func saveVaultPasswords(_ passwords: [String: String]) throws {
+        try prepareDirectory()
+        let keyData = try SessionEncryptionKeyStore.loadOrCreateKey()
+        let plaintext = try JSONEncoder().encode(PasswordVaultPayload(passwords: passwords))
+        let sealedBox = try AES.GCM.seal(
+            plaintext,
+            using: SymmetricKey(data: keyData),
+            authenticating: vaultAuthenticationData
+        )
+        guard let combined = sealedBox.combined else {
+            throw CredentialVaultError.invalidVaultData
+        }
+        let envelope = PasswordVaultEnvelope(version: vaultVersion, sealedData: combined)
+        let encoded = try JSONEncoder().encode(envelope)
+        try encoded.write(to: vaultURL, options: [.atomic])
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: vaultURL.path)
+
+        let verified = try loadVaultPasswords(using: keyData)
+        guard verified == passwords else {
+            throw CredentialVaultError.invalidVaultData
+        }
     }
 
     private static func loadLegacyEncryptedCredentials() throws -> StoredCredentials? {
@@ -793,6 +935,7 @@ struct RunConfig {
     var validateLogin: Bool = false
     var appIsFree: String = ""
     var appCountry: String = "us"
+    var appPlatform: String = "iphone"
     var allowAppAcquisition: Bool = false
     var removeAppStoreUpdateMetadata: Bool = false
 }
@@ -910,7 +1053,7 @@ private final class IBeamCursorRectView: NSView {
 }
 
 func ipaIsVerificationChallenge(_ text: String) -> Bool {
-    return text.contains("[2FA]") || text.contains("[AUTH]")
+    return text.contains("[2FA]")
 }
 
 func ipaProgressValue(from text: String) -> Double? {
@@ -938,11 +1081,19 @@ func downloadErrorMessage(from log: String) -> String {
     }
 
     if ipaIsVerificationChallenge(text) {
-        return String(localized: "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。")
+        return String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。")
+    }
+    if text.localizedCaseInsensitiveContains("SAP")
+        || text.localizedCaseInsensitiveContains("AppleMediaServices")
+        || text.contains("签名会话") {
+        return String(localized: "无法建立 Apple 登录签名会话。请检查网络后重试；如果问题持续，请更新 Pastel。")
     }
     if text.localizedCaseInsensitiveContains("Your password has changed")
         || text.localizedCaseInsensitiveContains("password token is expired")
-        || text.contains("本地会话可能已失效") {
+        || text.contains("本地会话可能已失效")
+        || text.contains("[AUTH]")
+        || text.contains("@@IPA:auth_required=1")
+        || text.contains("登录认证失败") {
         return String(localized: "Apple 账户会话已失效。请重新登录后再试。")
     }
     if text.contains("账号或密码不正确")
@@ -959,7 +1110,12 @@ func downloadErrorMessage(from log: String) -> String {
         || text.localizedCaseInsensitiveContains("unable to connect") {
         return String(localized: "无法连接 Apple 服务器。请检查网络连接后再试。")
     }
-    if text.contains("服务器繁忙") || text.localizedCaseInsensitiveContains("server busy") {
+    if text.contains("服务器繁忙")
+        || text.contains("商店令牌换取失败")
+        || text.contains("Apple 登录服务暂时未返回")
+        || text.localizedCaseInsensitiveContains("server busy")
+        || text.localizedCaseInsensitiveContains("failed to exchange store token")
+        || text.localizedCaseInsensitiveContains("apple sign-in did not return usable store credentials") {
         return String(localized: "Apple 服务器暂时不可用。请稍后再试。")
     }
     if text.contains("获取许可失败")
@@ -984,6 +1140,8 @@ func downloadRequiresRelogin(from log: String) -> Bool {
         || log.localizedCaseInsensitiveContains("password token is expired")
         || log.contains("本地会话可能已失效")
         || log.contains("[AUTH]")
+        || log.contains("@@IPA:auth_required=1")
+        || log.contains("登录认证失败")
 }
 
 private func cleanDownloadErrorDetail(_ line: String) -> String? {
@@ -1137,6 +1295,20 @@ final class AccountStore {
 
         let password = try CredentialVault.loadPassword(for: account.id)
         if !password.isEmpty {
+            accounts[index].password = password
+        }
+        return password
+    }
+
+    func passwordAsync(for account: StoredAccount) async throws -> String {
+        if let cached = accounts.first(where: { $0.id == account.id })?.password, !cached.isEmpty {
+            return cached
+        }
+        let accountID = account.id
+        let password = try await Task.detached(priority: .userInitiated) {
+            try CredentialVault.loadPassword(for: accountID)
+        }.value
+        if !password.isEmpty, let index = accounts.firstIndex(where: { $0.id == accountID }) {
             accounts[index].password = password
         }
         return password
@@ -1320,7 +1492,7 @@ final class AccountStore {
         } else if ipaIsVerificationChallenge(log) {
             isValidating = false
             needsCode = true
-            validationMessage = String(localized: "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。")
+            validationMessage = String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。")
         } else {
             isValidating = false
             needsCode = false
@@ -1407,6 +1579,7 @@ final class DownloadManager {
     private var processes: [String: Process] = [:]
     private var pipes: [String: (Pipe, Pipe)] = [:]
     private var configs: [String: RunConfig] = [:]
+    private var discardedJobIDs: Set<String> = []
 
     var anyRunning: Bool { processes.values.contains(where: \.isRunning) }
     var runningCount: Int { processes.values.count(where: \.isRunning) }
@@ -1465,6 +1638,7 @@ final class DownloadManager {
         env["IPA_DEVICE_GUID"] = deviceGUID
         if !config.appIsFree.isEmpty { env["IPA_APP_IS_FREE"] = config.appIsFree }
         env["IPA_APP_COUNTRY"] = config.appCountry
+        env["IPA_APP_PLATFORM"] = config.appPlatform
         if config.removeAppStoreUpdateMetadata { env["IPA_REMOVE_APP_STORE_UPDATE_METADATA"] = "1" }
         if let sessionURL = Self.sessionDirectoryURL() { env["IPA_SESSION_DIR"] = sessionURL.path }
         task.environment = env
@@ -1540,6 +1714,19 @@ final class DownloadManager {
     func stop(id: String) { processes[id]?.terminate() }
     func stopAll() { processes.values.forEach { $0.terminate() } }
 
+    func discard(id: String) {
+        guard jobs[id] != nil || processes[id] != nil || configs[id] != nil else { return }
+        discardedJobIDs.insert(id)
+        if let process = processes[id], process.isRunning {
+            process.terminate()
+        } else {
+            cleanup(id: id)
+            jobs[id] = nil
+            configs[id] = nil
+            discardedJobIDs.remove(id)
+        }
+    }
+
     func remove(id: String) {
         guard processes[id] == nil else { return }
         jobs[id] = nil; configs[id] = nil
@@ -1549,6 +1736,7 @@ final class DownloadManager {
     }
 
     private func append(id: String, _ text: String) {
+        guard !discardedJobIDs.contains(id) else { return }
         guard var job = jobs[id] else { return }
         let normalized = text.replacingOccurrences(of: "\r", with: "\n")
         if normalized.contains("@@IPA:phase=packaging") { job.isPackaging = true }
@@ -1564,6 +1752,11 @@ final class DownloadManager {
 
     private func finish(id: String, exitCode: Int32) {
         cleanup(id: id)
+        if discardedJobIDs.remove(id) != nil {
+            jobs[id] = nil
+            configs[id] = nil
+            return
+        }
         guard var job = jobs[id] else { return }
         job.progress = nil; job.isPackaging = false
         if exitCode == 0 {
@@ -2135,6 +2328,10 @@ struct ContentView: View {
     @State private var taskFeature = TaskLogFeatureState()
     @State private var pendingAppAcquisition: AppAcquisitionRequest?
     @State private var showingAppAcquisitionPrompt = false
+    @State private var appleVersionRequestID: UUID?
+    @State private var activeAppleVersionJobID: String?
+    @State private var activeAppleVersionAppID = ""
+    @State private var isPreparingAppleVersionFetch = false
     @Namespace private var manualActionGlassNamespace
     @Environment(\.colorScheme) private var colorScheme
     @FocusState private var activeField: ActiveField?
@@ -2147,7 +2344,13 @@ struct ContentView: View {
     @AppStorage(AppLanguage.overrideKey) private var languageOverride = ""
 
     private var versionListLoading: Bool {
-        catalog.isLoadingVersions || downloads.isRunning(Self.versionIDsFetchJobKey)
+        catalog.isLoadingVersions || isPreparingAppleVersionFetch
+            || activeAppleVersionJobID.map(downloads.isRunning) == true
+    }
+
+    private var activeAppleVersionJobStatus: JobStatus? {
+        guard let activeAppleVersionJobID else { return nil }
+        return downloads.job(activeAppleVersionJobID)?.status
     }
 
     private var centeredSpinner: some View {
@@ -2259,11 +2462,20 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshDownloadedFiles()
         }
-        .onChange(of: downloads.job(Self.versionIDsFetchJobKey)?.status) { _, status in
-            guard let job = downloads.job(Self.versionIDsFetchJobKey) else { return }
+        .onChange(of: activeAppleVersionJobStatus) { _, status in
+            guard let jobID = activeAppleVersionJobID,
+                  let job = downloads.job(jobID) else { return }
             if status == .done || (status == .failed && !job.needsCode) {
-                parseFetchedVersionIDs(from: job.log)
-                downloads.remove(id: Self.versionIDsFetchJobKey)
+                let belongsToActiveApp = activeAppleVersionAppID == activeAppID
+                if belongsToActiveApp {
+                    parseFetchedVersionIDs(from: job.log)
+                }
+                activeAppleVersionJobID = nil
+                activeAppleVersionAppID = ""
+                downloads.remove(id: jobID)
+                if belongsToActiveApp && status == .failed && downloadRequiresRelogin(from: job.log) {
+                    showRelogin()
+                }
             }
         }
         .alert(String(localized: "登录"), isPresented: $accountFeature.showingVerificationPrompt) {
@@ -2281,7 +2493,7 @@ struct ContentView: View {
                 accountFeature.pendingCodeJobID = nil
             }
         } message: {
-            Text(String(localized: "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。"))
+            Text(String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。"))
         }
         .alert(
             String(localized: "需要获取 App"),
@@ -3357,6 +3569,7 @@ struct ContentView: View {
 
     private func selectHistoryProvider(_ provider: String) {
         guard catalog.historyProvider != provider else { return }
+        cancelAppleVersionFetch()
         withAnimation(.snappy(duration: 0.18)) {
             catalog.historyProvider = provider
         }
@@ -4758,6 +4971,7 @@ struct ContentView: View {
     }
 
     private func clearActiveAppSelectionForPlatformChange() {
+        cancelAppleVersionFetch()
         searchFeature.selectedApp = nil
         searchFeature.selectedAppLocalIconPath = nil
         versionFeature.selectedVersion = nil
@@ -4824,6 +5038,7 @@ struct ContentView: View {
     }
 
     private func selectApp(_ result: AppSearchResult) {
+        cancelAppleVersionFetch()
         searchFeature.selectedApp = result
         searchFeature.selectedAppLocalIconPath = nil
         versionFeature.selectedVersion = nil
@@ -5134,8 +5349,6 @@ struct ContentView: View {
         refreshDownloadedFiles()
     }
 
-    private static let versionIDsFetchJobKey = "__ipa_versionids_fetch__"
-
     private nonisolated static func filenameVersionAndVariant(from stem: String) -> (name: String, version: String, variant: IPADownloadVariant) {
         let suffix = "_no-update"
         let variant: IPADownloadVariant
@@ -5164,18 +5377,17 @@ struct ContentView: View {
             return
         }
         let acct = account.appleAccount.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pwd: String
-        do {
-            pwd = try accountStore.password(for: account)
-        } catch {
-            accountFeature.saveMessage = error.localizedDescription
-            return
-        }
         let appID = activeAppID.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !acct.isEmpty, !pwd.isEmpty else {
+        guard !acct.isEmpty else {
             accountFeature.saveMessage = String(localized: "请先登录 Apple 账户。"); showSettings(); return
         }
         guard !appID.isEmpty else { return }
+        cancelAppleVersionFetch()
+        let requestID = UUID()
+        let jobID = "__ipa_versionids_fetch__\(requestID.uuidString)"
+        appleVersionRequestID = requestID
+        activeAppleVersionAppID = appID
+        isPreparingAppleVersionFetch = true
         versionFeature.selectedVersion = nil
         versionFeature.selectedVersionIDs.removeAll()
         versionFeature.lastSelectedVersionID = nil
@@ -5185,11 +5397,49 @@ struct ContentView: View {
         catalog.versionStatus = String(localized: "正在从 Apple 获取版本…")
         let accountCountry = account.countryCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let priceFlag = accountCountry.caseInsensitiveCompare(selectedCountryCode) == .orderedSame ? appIsFreeFlag() : ""
-        let config = RunConfig(appleAccount: acct, password: pwd, code: "",
-                               appID: appID, versionID: "", downloadDir: "", listVersionIDs: true,
-                               appIsFree: priceFlag, appCountry: accountCountry.isEmpty ? selectedCountryCode : accountCountry,
-                               allowAppAcquisition: allowAppAcquisition)
-        downloads.start(id: Self.versionIDsFetchJobKey, label: String(localized: "获取版本列表"), config: config)
+        Task {
+            do {
+                try await Task.sleep(nanoseconds: 180_000_000)
+                guard appleVersionRequestID == requestID,
+                      activeAppID == appID,
+                      catalog.historyProvider == "apple" || activeAppIsVision else { return }
+                let pwd = try await accountStore.passwordAsync(for: account)
+                guard appleVersionRequestID == requestID,
+                      activeAppID == appID,
+                      catalog.historyProvider == "apple" || activeAppIsVision else { return }
+                guard !pwd.isEmpty else {
+                    isPreparingAppleVersionFetch = false
+                    accountFeature.saveMessage = String(localized: "请先登录 Apple 账户。")
+                    catalog.versionStatus = String(localized: "Apple 账户会话已失效。请重新登录后再试。")
+                    showRelogin()
+                    return
+                }
+                let config = RunConfig(appleAccount: acct, password: pwd, code: "",
+                                       appID: appID, versionID: "", downloadDir: "", listVersionIDs: true,
+                                       appIsFree: priceFlag, appCountry: accountCountry.isEmpty ? selectedCountryCode : accountCountry,
+                                       appPlatform: selectedSearchPlatform.rawValue,
+                                       allowAppAcquisition: allowAppAcquisition)
+                isPreparingAppleVersionFetch = false
+                activeAppleVersionJobID = jobID
+                downloads.start(id: jobID, label: String(localized: "获取版本列表"), config: config)
+            } catch {
+                guard appleVersionRequestID == requestID else { return }
+                isPreparingAppleVersionFetch = false
+                accountFeature.saveMessage = error.localizedDescription
+                catalog.versionStatus = error.localizedDescription
+                showRelogin()
+            }
+        }
+    }
+
+    private func cancelAppleVersionFetch() {
+        appleVersionRequestID = nil
+        isPreparingAppleVersionFetch = false
+        activeAppleVersionAppID = ""
+        if let jobID = activeAppleVersionJobID {
+            activeAppleVersionJobID = nil
+            downloads.discard(id: jobID)
+        }
     }
 
     private func appIsFreeFlag() -> String {
@@ -5717,6 +5967,7 @@ struct ContentView: View {
             fetchVersionIDsFromApple()
             return
         }
+        cancelAppleVersionFetch()
         catalog.loadVersions()
     }
 
@@ -5785,6 +6036,7 @@ struct ContentView: View {
             downloadDir: cleanDir,
             appIsFree: priceFlag,
             appCountry: accountCountry.isEmpty ? selectedCountryCode : accountCountry,
+            appPlatform: selectedSearchPlatform.rawValue,
             removeAppStoreUpdateMetadata: removeUpdateMetadata
         )
         let variant = IPADownloadVariant(removeAppStoreUpdateMetadata: removeUpdateMetadata)
@@ -6637,7 +6889,7 @@ struct AccountSettingsView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(String(localized: "本地凭据保护"))
                             .font(.callout.weight(.semibold))
-                        Text(String(localized: "Apple 账户密码存储在 macOS Keychain 中，本机只保存账户名称和地区等非敏感设置。"))
+                        Text(String(localized: "Apple 账户密码使用 Keychain 中的主密钥进行 AES-GCM 加密；本机仅保存加密保险库和非敏感设置。"))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -6645,7 +6897,7 @@ struct AccountSettingsView: View {
 
                     Spacer()
 
-                    Label(String(localized: "使用 Keychain 保护"), systemImage: "lock.shield")
+                    Label(String(localized: "Keychain 与 AES-GCM 保护"), systemImage: "lock.shield")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -6918,7 +7170,7 @@ struct AccountEditorView: View {
 
             if accountStore.needsCode {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(String(localized: "Apple 无法区分密码错误与双重认证。请检查密码；如果已收到验证码，也可以直接输入。"))
+                    Text(String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。"))
                         .font(.callout.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
 

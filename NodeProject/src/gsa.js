@@ -28,6 +28,12 @@ function transientAuthError(message = t('store_token_failed')) {
     return e;
 }
 
+function sapUnavailableError(message) {
+    const e = new Error(message);
+    e.code = 'SAP_UNAVAILABLE';
+    return e;
+}
+
 // ---- 常量 ----
 const CURL = '/usr/bin/curl';
 const SCUTIL = '/usr/sbin/scutil';
@@ -114,7 +120,7 @@ function sapSignerPath() {
 function signAppleAction(bodyBytes) {
     const signer = sapSignerPath();
     if (!existsSync(signer)) {
-        throw new Error(`缺少 Apple SAP 签名组件：${signer}`);
+        throw sapUnavailableError(`缺少 Apple SAP 签名组件：${signer}`);
     }
     try {
         const output = execFileSync(signer, [], {
@@ -132,7 +138,7 @@ function signAppleAction(bodyBytes) {
             ? error.stderr.toString('utf8').trim()
             : String(error?.stderr || '').trim();
         const detail = stderr || error.message || String(error);
-        throw new Error(`Apple SAP 签名失败：${detail}`);
+        throw sapUnavailableError(`Apple SAP 签名失败：${detail}`);
     }
 }
 
@@ -143,21 +149,21 @@ class PersistentSAPSigner {
         this.stderr = stderr;
     }
 
-    static async open() {
+    static async open(config) {
         const signer = sapSignerPath();
-        if (!existsSync(signer)) throw new Error(`缺少 Apple SAP 签名组件：${signer}`);
-        const child = spawn(signer, ['--server'], {stdio: ['pipe', 'pipe', 'pipe']});
+        if (!existsSync(signer)) throw sapUnavailableError(`缺少 Apple SAP 签名组件：${signer}`);
+        const child = spawn(signer, ['--server', config.setupURL, config.certificateURL], {stdio: ['pipe', 'pipe', 'pipe']});
         let stderr = '';
         child.stderr.setEncoding('utf8');
         child.stderr.on('data', chunk => { stderr += chunk; });
         const lines = readline.createInterface({input: child.stdout, crlfDelay: Infinity})[Symbol.asyncIterator]();
         const ready = await Promise.race([
             lines.next(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Apple SAP 签名会话启动超时')), 35_000)),
+            new Promise((_, reject) => setTimeout(() => reject(sapUnavailableError('Apple SAP 签名会话启动超时')), 35_000)),
         ]);
         if (ready.done || ready.value !== 'READY') {
             child.kill();
-            throw new Error(`Apple SAP 签名会话启动失败：${stderr.trim() || ready.value || 'no response'}`);
+            throw sapUnavailableError(`Apple SAP 签名会话启动失败：${stderr.trim() || ready.value || 'no response'}`);
         }
         return new PersistentSAPSigner(child, lines, () => stderr);
     }
@@ -166,14 +172,14 @@ class PersistentSAPSigner {
         this.child.stdin.write(`${Buffer.from(body).toString('base64')}\n`);
         const result = await Promise.race([
             this.lines.next(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Apple SAP 签名超时')), 15_000)),
+            new Promise((_, reject) => setTimeout(() => reject(sapUnavailableError('Apple SAP 签名超时')), 15_000)),
         ]);
         const value = String(result.value || '');
         if (result.done || value.startsWith('ERROR ')) {
-            throw new Error(value.slice(6) || this.stderr().trim() || 'Apple SAP 签名失败');
+            throw sapUnavailableError(value.slice(6) || this.stderr().trim() || 'Apple SAP 签名失败');
         }
         const signature = Buffer.from(value, 'base64');
-        if (!signature.length) throw new Error('Apple SAP 签名为空');
+        if (!signature.length) throw sapUnavailableError('Apple SAP 签名为空');
         return signature;
     }
 
@@ -247,6 +253,31 @@ export function parseStoreURLBag(text) {
     // Apple has advertised StoreServices endpoints both at the plist root and
     // inside urlBag. Prefer the root while retaining every nested endpoint.
     return {...nested, ...root};
+}
+
+export function sapConfigurationFromBag(bag) {
+    const setupURL = String(bag?.['sign-sap-setup'] || '');
+    const certificateURL = String(bag?.['sign-sap-setup-cert'] || '');
+    const version = String(bag?.['sign-sap-version'] || '');
+    let setup;
+    let certificate;
+    try {
+        setup = new URL(setupURL);
+        certificate = new URL(certificateURL);
+    } catch {
+        throw sapUnavailableError('Apple Store 配置未提供有效的 SAP 签名地址');
+    }
+    const validSetup = setup.protocol === 'https:' && !setup.username && !setup.password && !setup.port
+        && ['fpinit.itunes.apple.com', 'play.itunes.apple.com'].includes(setup.hostname)
+        && (setup.pathname.startsWith('/v1/signSapSetup/')
+            || setup.pathname === '/WebObjects/MZPlay.woa/wa/signSapSetup');
+    const validCertificate = certificate.protocol === 'https:' && !certificate.username && !certificate.password
+        && !certificate.port && certificate.hostname === 's.mzstatic.com'
+        && certificate.pathname === '/sap/setupCert.plist';
+    if (!validSetup || !validCertificate || version !== '200') {
+        throw sapUnavailableError('Apple Store 配置包含不受支持的 SAP 签名参数');
+    }
+    return {setupURL: setup.toString(), certificateURL: certificate.toString(), version};
 }
 
 export function fetchStoreURLBag(guid) {
@@ -416,11 +447,13 @@ export async function storeLogin(email, password, code, guid, cookieText = '', p
     if (cookieText) writeFileSync(jar, cookieText);
 
     // Use the validated current bag URL instead of probing native/legacy alternatives.
-    const endpoint = normalizeAuthenticationEndpoint(fetchStoreURLBag(guid)?.authenticateAccount);
+    const bag = fetchStoreURLBag(guid);
+    const endpoint = normalizeAuthenticationEndpoint(bag?.authenticateAccount);
+    const sapConfig = sapConfigurationFromBag(bag);
 
     // 同一次登录和 2FA 验证必须保持同一个 SAP 会话；签完即关闭会使
     // Apple 在认证前返回 204/301/403 空响应。
-    const signerSession = await PersistentSAPSigner.open();
+    const signerSession = await PersistentSAPSigner.open(sapConfig);
     let res;
     let parsed;
     try {
