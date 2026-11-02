@@ -4,9 +4,9 @@
         <title>Pastel</title>
         <item>
             <title>20261102</title>
-            <pubDate>Mon, 02 Nov 2026 08:43:28 +0800</pubDate>
+            <pubDate>Mon, 02 Nov 2026 16:11:39 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261102</link>
-            <sparkle:version>2026110202</sparkle:version>
+            <sparkle:version>2026110203</sparkle:version>
             <sparkle:shortVersionString>20261102</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
@@ -21,11 +21,15 @@
 4. 登录跳转后继续保留 SAP 签名、Cookie、验证码和认证次数，并限制凭据只发送到有效的 Apple 服务地址。
 5. 修复 20261102 初始构建中 Sparkle 签名身份不一致，导致 App 无法启动的问题。
 6. 优化账户凭据保护，减少更新后反复要求输入 Mac 登录密码的情况；已有账户和会话会自动迁移。
-7. 继续支持 macOS 26，并修复其他已知问题和细节体验。
+7. 改进双重认证输入流程：需要验证码时弹出独立窗口，输入后确认；取消即可返回原登录表单修改。
+8. 修复部分认证响应未明确要求验证码时，没有输入入口的问题；已收到验证码的用户可手动进入验证。
+9. 改进验证码错误、过期、重试与取消时的状态处理，避免重复提交或取消后再次弹窗。
+10. 移除首页 Star 按钮，右上角仅保留设置。
+11. 继续支持 macOS 26，并修复其他已知问题和细节体验。
 
 如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
 ]]></description>
-            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261102/Pastel-20261102-build-2026110202.dmg" length="72289058" type="application/octet-stream" sparkle:edSignature="1o9LzkBDpzAui+WXhV6V5jt1fo5hhTtfx5b8QgbMfPhAKvjwOzAlqvPf1H18dhHI8HypQnAKPm5QeIIFv4u6CQ=="/>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261102/Pastel-20261102-build-2026110203.dmg" length="72335932" type="application/octet-stream" sparkle:edSignature="VUE3o0tHKzvbJF1uZDjE0zr06+ov175qd1SUiLESdXMFjKzzwvpRKBOwM393XGuKrbb6z1ZriLwwnce0IdXWDw=="/>
         </item>
         <item>
             <title>20261030</title>
