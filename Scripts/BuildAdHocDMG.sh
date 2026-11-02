@@ -44,13 +44,23 @@ codesign --force --sign "$release_identity" --options runtime \
     --entitlements "${project_root}/Scripts/NodeJIT.entitlements" "$node"
 codesign --force --sign "$release_identity" --options runtime \
     --entitlements "${project_root}/Scripts/StoreHelper.entitlements" "$store_helper"
-codesign --force --sign "$release_identity" --options runtime "$sparkle"
-codesign --force --sign "$release_identity" --options runtime "$app"
+# A self-signed identity has no Apple Team ID. Enabling Hardened Runtime on the
+# host app would make dyld reject Sparkle under Library Validation even though
+# both signatures are otherwise valid. Node and store-helper retain their own
+# narrowly scoped Hardened Runtime entitlements above.
+codesign --force --sign "$release_identity" "$sparkle"
+codesign --force --sign "$release_identity" "$app"
 
 codesign --verify --strict "$signer"
 codesign --verify --strict "$node"
 codesign --verify --strict "$store_helper"
 codesign --verify --deep --strict "$app"
+
+if codesign -dv --verbose=4 "$app" 2>&1 | grep -F -q 'flags=0x10000(runtime)'; then
+    echo "Release host app unexpectedly has Hardened Runtime enabled." >&2
+    echo "A self-signed host cannot load Sparkle with Library Validation." >&2
+    exit 1
+fi
 
 # Validate Node after every enclosing signature has been applied. Merely checking
 # the entitlement plist would not prove that V8 can create executable JIT pages.
