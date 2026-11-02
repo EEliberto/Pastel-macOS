@@ -4,16 +4,20 @@
         <title>Pastel</title>
         <item>
             <title>20261102</title>
-            <pubDate>Mon, 02 Nov 2026 16:11:39 +0800</pubDate>
+            <pubDate>Mon, 02 Nov 2026 20:29:25 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261102</link>
-            <sparkle:version>2026110203</sparkle:version>
+            <sparkle:version>2026110204</sparkle:version>
             <sparkle:shortVersionString>20261102</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <sparkle:criticalUpdate/>
             <description sparkle:format="plain-text"><![CDATA[感谢你使用 Pastel！
 
-本次更新重点修复 Apple 账户登录问题，并改善更新后的启动与凭据使用体验。此次更新内容：
+本次更新修复下载的 IPA 安装后白屏闪退的问题，同时包含 Apple 账户登录与使用体验改进。此次更新内容：
+
+本次修复：补齐 IPA 下载后的账户授权文件写入，修复 App 安装后无法正常启动的问题。此前受影响的 IPA 需要使用新版重新下载并安装，旧文件不会自动修复。
+
+同日此前更新内容：
 
 1. 修复部分用户近期无法登录 Apple 账户的问题。
 2. 更新 Apple 登录流程，正确使用 Apple 当前服务配置返回的认证地址。
@@ -29,7 +33,7 @@
 
 如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
 ]]></description>
-            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261102/Pastel-20261102-build-2026110203.dmg" length="72335932" type="application/octet-stream" sparkle:edSignature="VUE3o0tHKzvbJF1uZDjE0zr06+ov175qd1SUiLESdXMFjKzzwvpRKBOwM393XGuKrbb6z1ZriLwwnce0IdXWDw=="/>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261102/Pastel-20261102-build-2026110204.dmg" length="72336969" type="application/octet-stream" sparkle:edSignature="se8ze2qYD3zWemCeUpqpmbboeCENHf8h79v7d6Z1h+U3X0TaMs77hdktCgxx0BIYy9tJExg3Az9chPs4VFslCQ=="/>
         </item>
         <item>
             <title>20261030</title>
