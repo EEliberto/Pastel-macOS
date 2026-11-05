@@ -3,6 +3,28 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20261105</title>
+            <pubDate>Thu, 05 Nov 2026 18:52:16 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261105</link>
+            <sparkle:version>2026110501</sparkle:version>
+            <sparkle:shortVersionString>20261105</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[感谢你使用 Pastel！
+
+本次更新修复 IPA 账户信息的兼容性问题。此次更新内容：
+
+1. 修复新版下载的 IPA 在资料库中 Apple 账户显示为空的问题。
+2. 恢复 IPA 账户元数据的兼容字段与 XML 格式，提高第三方安装工具识别账户信息的兼容性。
+3. 资料库兼容读取不同账户字段以及 XML、二进制 plist；此前已下载文件中存在的账户信息也可正常显示，无需重新下载。
+4. 保留 IPA 的 App 内容、签名与账户授权文件，完善打包失败时的文件保护。
+
+如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261105/Pastel-20261105-build-2026110501.dmg" length="72342012" type="application/octet-stream" sparkle:edSignature="bk31VNrf/D3WBULFgcDD3rNxFSmSf0MSLbWvCiKV/7ABv0fYTJtVSbxlG/Ijn8gyr99Ts0B5ZGQTXZPM1UdiAg=="/>
+        </item>
+        <item>
             <title>20261102</title>
             <pubDate>Mon, 02 Nov 2026 20:29:25 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261102</link>
