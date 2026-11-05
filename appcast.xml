@@ -4,16 +4,26 @@
         <title>Pastel</title>
         <item>
             <title>20261105</title>
-            <pubDate>Thu, 05 Nov 2026 18:52:16 +0800</pubDate>
+            <pubDate>Thu, 05 Nov 2026 22:04:57 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261105</link>
-            <sparkle:version>2026110501</sparkle:version>
+            <sparkle:version>2026110502</sparkle:version>
             <sparkle:shortVersionString>20261105</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <sparkle:criticalUpdate/>
             <description sparkle:format="plain-text"><![CDATA[感谢你使用 Pastel！
 
-本次更新修复 IPA 账户信息的兼容性问题。此次更新内容：
+本次更新修复“不再更新”功能失效的问题，并包含 IPA 账户信息兼容性改进。
+
+本次修复：
+
+1. 修复“不再更新”开关未传入下载组件，导致仍保留 App Store 更新识别元数据的问题。
+2. 开启“不再更新”后保留账户显示信息及授权文件，生成独立的 `_no-update.ipa`，避免覆盖普通下载文件。
+3. 修复首次获取免费 App 后重试下载时，未应用“不再更新”选项的问题。
+
+已下载的受影响 IPA 需要勾选“不再更新”后重新下载并安装，旧文件不会自动修改。
+
+同日此前更新内容：
 
 1. 修复新版下载的 IPA 在资料库中 Apple 账户显示为空的问题。
 2. 恢复 IPA 账户元数据的兼容字段与 XML 格式，提高第三方安装工具识别账户信息的兼容性。
@@ -22,7 +32,7 @@
 
 如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
 ]]></description>
-            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261105/Pastel-20261105-build-2026110501.dmg" length="72342012" type="application/octet-stream" sparkle:edSignature="bk31VNrf/D3WBULFgcDD3rNxFSmSf0MSLbWvCiKV/7ABv0fYTJtVSbxlG/Ijn8gyr99Ts0B5ZGQTXZPM1UdiAg=="/>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261105/Pastel-20261105-build-2026110502.dmg" length="72324081" type="application/octet-stream" sparkle:edSignature="57ZM5R7kf/UiLeFI8QEXeOrwXGsgS4eR89qeWBuW3pBcMS/+ZS51Qjy7AcgfYUOgewjhLUX7uEenzNudoGMdBw=="/>
         </item>
         <item>
             <title>20261102</title>
