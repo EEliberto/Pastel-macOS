@@ -202,6 +202,9 @@ func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadI
 	}); err != nil {
 		return appstore.DownloadOutput{}, fmt.Errorf("failed to finalize IPA authorization: %w", err)
 	}
+	if err := normalizeAccountMetadata(output.DestinationPath, input.Account.Email); err != nil {
+		return appstore.DownloadOutput{}, fmt.Errorf("failed to finalize IPA account metadata: %w", err)
+	}
 	return output, nil
 }
 

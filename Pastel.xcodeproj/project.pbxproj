@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		1A0000000000000000000034 /* IPAMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000033 /* IPAMetadata.swift */; };
 		1A000000000000000000000A /* PastelApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000007 /* PastelApp.swift */; };
 		1A0000000000000000000020 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000021 /* Localizable.xcstrings */; };
 		1A0000000000000000000024 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 1A0000000000000000000023 /* Sparkle */; };
@@ -20,6 +21,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		1A0000000000000000000033 /* IPAMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPAMetadata.swift; sourceTree = "<group>"; };
 		1A0000000000000000000003 /* Pastel.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pastel.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A0000000000000000000007 /* PastelApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastelApp.swift; sourceTree = "<group>"; };
 		1A0000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -66,6 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				1A0000000000000000000007 /* PastelApp.swift */,
+				1A0000000000000000000033 /* IPAMetadata.swift */,
 				1A0000000000000000000025 /* AccountFeatureState.swift */,
 				1A0000000000000000000026 /* SearchFeatureState.swift */,
 				1A0000000000000000000027 /* VersionHistoryFeatureState.swift */,
@@ -185,6 +188,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A000000000000000000000A /* PastelApp.swift in Sources */,
+				1A0000000000000000000034 /* IPAMetadata.swift in Sources */,
 				1A000000000000000000002A /* AccountFeatureState.swift in Sources */,
 				1A000000000000000000002B /* SearchFeatureState.swift in Sources */,
 				1A000000000000000000002C /* VersionHistoryFeatureState.swift in Sources */,
@@ -239,7 +243,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026110204;
+				CURRENT_PROJECT_VERSION = 2026110501;
 				DEVELOPMENT_TEAM = 47AX2T25DK;
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -248,7 +252,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 20261102;
+				MARKETING_VERSION = 20261105;
 				PRODUCT_BUNDLE_IDENTIFIER = com.allenmiao.ipahistorydownload;
 				PRODUCT_NAME = "Pastel";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -266,7 +270,7 @@
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 2026110204;
+				CURRENT_PROJECT_VERSION = 2026110501;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = NO;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -275,7 +279,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 20261102;
+				MARKETING_VERSION = 20261105;
 				PRODUCT_BUNDLE_IDENTIFIER = com.allenmiao.ipahistorydownload;
 				PRODUCT_NAME = "Pastel";
 				SWIFT_EMIT_LOC_STRINGS = YES;

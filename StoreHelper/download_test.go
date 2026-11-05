@@ -47,6 +47,7 @@ func TestDownloadedIPAContainsAccountAuthorization(t *testing.T) {
 			}
 			writer := zip.NewWriter(file)
 			entries := map[string]string{
+				"iTunesMetadata.plist":        `<?xml version="1.0"?><plist version="1.0"><dict><key>itemId</key><integer>123</integer></dict></plist>`,
 				"Payload/Test.app/Info.plist": `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleExecutable</key><string>Test</string></dict></plist>`,
 				"Payload/Test.app/Test":       "original-encrypted-executable",
 			}
@@ -73,7 +74,7 @@ func TestDownloadedIPAContainsAccountAuthorization(t *testing.T) {
 				AppStore: appstore.NewAppStore(appstore.Args{OperatingSystem: operatingsystem.New()}),
 				output:   appstore.DownloadOutput{DestinationPath: ipa, Sinfs: []appstore.Sinf{{Data: authorization}}},
 			}
-			output, err := downloadAuthorizedPackage(store, appstore.DownloadInput{})
+			output, err := downloadAuthorizedPackage(store, appstore.DownloadInput{Account: appstore.Account{Email: "test@example.invalid"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -99,7 +100,7 @@ func TestDownloadedIPAContainsAccountAuthorization(t *testing.T) {
 						t.Fatal("wrong account authorization")
 					}
 				}
-				if expected, ok := entries[entry.Name]; ok && string(data) != expected {
+				if expected, ok := entries[entry.Name]; ok && entry.Name != "iTunesMetadata.plist" && string(data) != expected {
 					t.Fatalf("original content changed: %s", entry.Name)
 				}
 			}

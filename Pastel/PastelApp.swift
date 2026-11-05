@@ -5746,7 +5746,7 @@ struct ContentView: View {
             version: version,
             versionId: str("softwareVersionExternalIdentifier"),
             sizeBytes: size,
-            appleAccount: str("appleId"),
+            appleAccount: IPAMetadata.appleAccount(in: plist),
             storefrontId: str("s"),
             downloadDate: date,
             removesAppStoreUpdates: metadataInfo.removesAppStoreUpdates || filenameInfo.variant.removesAppStoreUpdates,

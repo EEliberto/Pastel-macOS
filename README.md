@@ -8,7 +8,7 @@
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <a href="release-notes/20261102/release-notes.md">查看新功能</a>
+    <a href="release-notes/20261105/release-notes.md">查看新功能</a>
   </p>
   <p><sub>需要 macOS 26 或更高版本，以及搭载 Apple 芯片的 Mac。</sub></p>
   <br>
@@ -77,11 +77,11 @@ Apple 账户密码与会话数据使用 AES-GCM 加密保存，主密钥由 macO
 
 <br>
 
-## Pastel 20261102
+## Pastel 20261105
 
-此更新修复下载的 IPA 安装后白屏闪退的问题，同时包含 Apple 账户登录与使用体验改进。受影响的 IPA 请使用新版重新下载并安装。
+此更新修复 IPA 在资料库中 Apple 账户显示为空的问题，恢复账户元数据兼容字段，并改善第三方安装工具的识别兼容性。
 
-[阅读完整更新日志](release-notes/20261102/release-notes.md)
+[阅读完整更新日志](release-notes/20261105/release-notes.md)
 
 <br>
 
