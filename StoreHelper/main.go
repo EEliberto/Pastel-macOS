@@ -10,6 +10,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -20,17 +21,18 @@ import (
 )
 
 type request struct {
-	Command    string           `json:"command"`
-	Email      string           `json:"email,omitempty"`
-	Password   string           `json:"password,omitempty"`
-	Code       string           `json:"code,omitempty"`
-	GUID       string           `json:"guid"`
-	Account    appstore.Account `json:"account,omitempty"`
-	Cookies    []*http.Cookie   `json:"cookies,omitempty"`
-	App        appstore.App     `json:"app,omitempty"`
-	Platform   string           `json:"platform,omitempty"`
-	VersionID  string           `json:"versionId,omitempty"`
-	OutputPath string           `json:"outputPath,omitempty"`
+	Command                      string           `json:"command"`
+	Email                        string           `json:"email,omitempty"`
+	Password                     string           `json:"password,omitempty"`
+	Code                         string           `json:"code,omitempty"`
+	GUID                         string           `json:"guid"`
+	Account                      appstore.Account `json:"account,omitempty"`
+	Cookies                      []*http.Cookie   `json:"cookies,omitempty"`
+	App                          appstore.App     `json:"app,omitempty"`
+	Platform                     string           `json:"platform,omitempty"`
+	VersionID                    string           `json:"versionId,omitempty"`
+	OutputPath                   string           `json:"outputPath,omitempty"`
+	RemoveAppStoreUpdateMetadata bool             `json:"removeAppStoreUpdateMetadata,omitempty"`
 }
 
 type response struct {
@@ -175,7 +177,7 @@ func main() {
 			Context: context.Background(), Account: account, App: input.App,
 			OutputPath: input.OutputPath, ExternalVersionID: input.VersionID,
 			Platform: platform, Progress: bar,
-		})
+		}, input.RemoveAppStoreUpdateMetadata)
 		if downloadErr != nil {
 			fail(input, errorCode(downloadErr, false), downloadErr)
 		}
@@ -192,7 +194,23 @@ func main() {
 
 // Download returns the Apple archive and the account-specific FairPlay data
 // separately. Match ipatool's CLI: inject that data before reporting success.
-func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadInput) (appstore.DownloadOutput, error) {
+func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadInput, removeUpdates bool) (appstore.DownloadOutput, error) {
+	originalOutputPath := input.OutputPath
+	if removeUpdates {
+		directory := originalOutputPath
+		if directory == "" {
+			directory = "."
+		}
+		if info, err := os.Stat(directory); err != nil || !info.IsDir() {
+			directory = filepath.Dir(directory)
+		}
+		staging, err := os.MkdirTemp(directory, ".pastel-no-update-*")
+		if err != nil {
+			return appstore.DownloadOutput{}, err
+		}
+		defer os.RemoveAll(staging)
+		input.OutputPath = staging
+	}
 	output, err := store.Download(input)
 	if err != nil {
 		return appstore.DownloadOutput{}, err
@@ -202,8 +220,23 @@ func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadI
 	}); err != nil {
 		return appstore.DownloadOutput{}, fmt.Errorf("failed to finalize IPA authorization: %w", err)
 	}
-	if err := normalizeAccountMetadata(output.DestinationPath, input.Account.Email); err != nil {
+	if err := normalizeAccountMetadata(output.DestinationPath, input.Account.Email, removeUpdates); err != nil {
 		return appstore.DownloadOutput{}, fmt.Errorf("failed to finalize IPA account metadata: %w", err)
+	}
+	if removeUpdates {
+		target := originalOutputPath
+		if target == "" {
+			target = "."
+		}
+		if info, err := os.Stat(target); err == nil && info.IsDir() {
+			target = filepath.Join(target, filepath.Base(output.DestinationPath))
+		}
+		ext := filepath.Ext(target)
+		target = strings.TrimSuffix(target, ext) + "_no-update" + ext
+		if err := os.Rename(output.DestinationPath, target); err != nil {
+			return appstore.DownloadOutput{}, err
+		}
+		output.DestinationPath = target
 	}
 	return output, nil
 }

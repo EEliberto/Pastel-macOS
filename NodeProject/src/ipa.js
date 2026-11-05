@@ -442,11 +442,13 @@ export class Ipa {
         const app = await this.helperApp(APPID);
         const platform = process.env.IPA_APP_PLATFORM || 'iphone';
         try {
+            const downloadRequest = {
+                app, platform, versionId: appVerId || '', outputPath: dir,
+                removeAppStoreUpdateMetadata: process.env.IPA_REMOVE_APP_STORE_UPDATE_METADATA === '1',
+            };
             let result;
             try {
-                result = await this.helperRequest('download', {
-                    app, platform, versionId: appVerId || '', outputPath: dir,
-                }, {progress: true});
+                result = await this.helperRequest('download', downloadRequest, {progress: true});
             } catch (error) {
                 if (error.code !== 'LICENSE_REQUIRED') throw error;
                 if (app.price > 0) throw new Error(t('paid_not_purchased'));
@@ -455,9 +457,7 @@ export class Ipa {
                     throw error;
                 }
                 await this.helperRequest('purchase', {app, platform});
-                result = await this.helperRequest('download', {
-                    app, platform, versionId: appVerId || '', outputPath: dir,
-                }, {progress: true});
+                result = await this.helperRequest('download', downloadRequest, {progress: true});
             }
             this.out = result?.download?.DestinationPath || '';
             if (!this.out) throw new Error(t('appinfo_nodata'));

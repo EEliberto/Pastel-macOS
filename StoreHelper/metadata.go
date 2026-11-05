@@ -14,7 +14,7 @@ import (
 
 // Restore Pastel's account metadata contract without modifying signed app data.
 // Use a sibling temporary file so a failed rewrite preserves the original IPA.
-func normalizeAccountMetadata(packagePath, email string) error {
+func normalizeAccountMetadata(packagePath, email string, removeUpdates bool) error {
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return errors.New("missing authenticated Apple account")
@@ -63,6 +63,12 @@ func normalizeAccountMetadata(packagePath, email string) error {
 	accountInfo["AppleID"] = email
 	downloadInfo["accountInfo"] = accountInfo
 	metadata["com.apple.iTunesStore.downloadInfo"] = downloadInfo
+	metadataName := "iTunesMetadata.plist"
+	if removeUpdates {
+		metadataName = "PastelMetadata.plist"
+		metadata["pastelMetadataVersion"] = uint64(1)
+		metadata["pastelRemovesAppStoreUpdates"] = true
+	}
 	data, err := plist.Marshal(metadata, plist.XMLFormat)
 	if err != nil {
 		return err
@@ -82,7 +88,7 @@ func normalizeAccountMetadata(packagePath, email string) error {
 	}
 	archive := zip.NewWriter(temporary)
 	for _, entry := range source.File {
-		if entry.Name == "iTunesMetadata.plist" {
+		if entry.Name == "iTunesMetadata.plist" || entry.Name == "PastelMetadata.plist" {
 			continue
 		}
 		if err := archive.Copy(entry); err != nil {
@@ -90,7 +96,7 @@ func normalizeAccountMetadata(packagePath, email string) error {
 			return fmt.Errorf("copy IPA entry: %w", err)
 		}
 	}
-	entry, err := archive.Create("iTunesMetadata.plist")
+	entry, err := archive.Create(metadataName)
 	if err != nil {
 		archive.Close()
 		return err
