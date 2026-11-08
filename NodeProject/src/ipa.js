@@ -66,12 +66,12 @@ import {readCookieJar, restoreCookieJar} from './gsa.js';
 import {SignatureClient} from './Signature.js';
 import {download} from './downloader.js';
 import {t} from './i18n.js';
-import {runStoreHelper} from './store-helper.js';
+import {helperUser, runStoreHelper, storeAuthenticationError} from './store-helper.js';
 
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SESSION_TTL_MS = Number(process.env.IPA_SESSION_TTL_MS || DEFAULT_SESSION_TTL_MS);
-const SESSION_FLOW_VERSION = 'appstore-direct-v1';
-const ACCEPTED_SESSION_FLOW_VERSIONS = new Set([SESSION_FLOW_VERSION, 'gsa-srp-v10']);
+const SESSION_FLOW_VERSION = 'appstore-amd-v2';
+const ACCEPTED_SESSION_FLOW_VERSIONS = new Set([SESSION_FLOW_VERSION]);
 const ENCRYPTED_SESSION_FORMAT = 'pastel-session-aes-gcm-v1';
 
 function decodeSessionKey(value) {
@@ -186,6 +186,8 @@ export class Ipa {
                 pod: user.pod || '',
                 authHeaders: user.authHeaders,
                 cookieText: user.cookieText || '',
+                frameworkAccount: user.frameworkAccount ? {...user.frameworkAccount, password: undefined} : undefined,
+                frameworkCookieState: user.frameworkCookieState || [],
             }
         };
         await this.writeEncryptedSession(session);
@@ -236,7 +238,7 @@ export class Ipa {
         for (const delayMs of [0, 750]) {
             if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
             try {
-                user = await Store.login(this.creds.APPLE_ID, this.creds.PASSWORD, this.creds.CODE, previousSession);
+                user = await Store.login(this.creds.APPLE_ID, this.creds.PASSWORD, this.creds.CODE, previousSession, this.sessionEncryptionKey?.toString('base64') || '');
                 lastError = null;
                 break;
             } catch (error) {
@@ -308,14 +310,18 @@ export class Ipa {
     }
 
     async helperRequest(command, extra = {}, {progress = false} = {}) {
+        if (!this.user) await this.login();
         let packagingEmitted = false;
         try {
-            return await runStoreHelper({
+            const result = await runStoreHelper({
                 command,
                 email: this.creds.APPLE_ID,
                 password: this.creds.PASSWORD,
                 code: this.creds.CODE || '',
                 guid: Store.guid,
+                sessionKey: this.sessionEncryptionKey?.toString('base64') || '',
+                account: this.user?.frameworkAccount,
+                cookieState: this.user?.frameworkCookieState || [],
                 ...extra,
             }, {
                 onProgress: progress ? percent => {
@@ -326,16 +332,16 @@ export class Ipa {
                     }
                 } : undefined,
             });
-        } catch (error) {
-            if (error.code === 'AUTH_CODE_REQUIRED') {
-                const challenge = new Error(t('login_2fa'));
-                challenge.code = 'NEEDS_2FA';
-                throw challenge;
+            if (result.account) {
+                this.applyUser(helperUser(result, this.creds.APPLE_ID), false);
+                await this.saveSession(this.user).catch(error => {
+                    console.log(t('save_session_failed', {message: error.message}));
+                });
             }
-            if (error.code === 'AUTH_FAILED') {
-                const auth = new Error(t('login_auth_or_2fa'));
-                auth.code = 'AUTH_REQUIRED';
-                throw auth;
+            return result;
+        } catch (error) {
+            if (error.code?.startsWith('AUTH_') || ['INVALID_CREDENTIALS', 'ACCOUNT_DISABLED', 'TOKEN_EXPIRED'].includes(error.code)) {
+                throw storeAuthenticationError(error);
             }
             throw error;
         }

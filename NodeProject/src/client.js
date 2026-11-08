@@ -3,7 +3,7 @@ import {curlRequest, parsePlistLoose, STORE_USER_AGENT, cleanup, fetchStoreURLBa
 import {recoverRedownload, shouldTryRedownload} from './download-recovery.js';
 import {getDeviceGuid} from './device.js';
 import {t} from './i18n.js';
-import {helperUser, runStoreHelper} from './store-helper.js';
+import {helperUser, runStoreHelper, storeAuthenticationError} from './store-helper.js';
 
 class ApiError extends Error {
     constructor(message, failureType, customerMessage) {
@@ -117,54 +117,16 @@ class Store {
         cleanup();
     }
 
-    // 与 Asspp 一样直接使用 StoreServices 登录；此活动路径不调用
-    // GSA/Anisette，因此不会创建模拟 Mac 设备记录。
-    static async login(email, password, mfa, previousSession = null) {
+    // The upstream helper owns SAP signing, AMD provisioning and native auth.
+    static async login(email, password, mfa, previousSession = null, sessionKey = '') {
         try {
             const result = await runStoreHelper({
-                command: 'login',
-                email,
-                password,
-                code: mfa || '',
-                guid: this.guid,
+                command: 'login', email, password, code: mfa || '',
+                guid: this.guid, sessionKey,
             });
             return helperUser(result, email);
         } catch (error) {
-            const msg = error.message || String(error);
-            if (error.code === 'AUTH_CODE_REQUIRED') {
-                const e = new Error(t('login_2fa'));
-                e.code = 'NEEDS_2FA';
-                throw e;
-            }
-            if (error.code === 'AUTH_FAILED') {
-                const e = new Error(t('login_auth_or_2fa'));
-                e.code = 'AUTH_OR_2FA';
-                throw e;
-            }
-            if (error.code === 'SAP_UNAVAILABLE') {
-                const e = new Error(msg);
-                e.code = 'SAP_UNAVAILABLE';
-                throw e;
-            }
-            if (error.code === 'AUTH_TRANSIENT') {
-                const e = new Error(msg);
-                e.code = 'AUTH_TRANSIENT';
-                throw e;
-            }
-            if (error.code === 'AUTH_OR_2FA') {
-                const e = new Error(t('login_auth_or_2fa'));
-                e.code = 'AUTH_OR_2FA';
-                throw e;
-            }
-            // 2FA 检测用稳定的 error.code（不依赖文案语言）；保留中文 includes 作为兜底。
-            if (error.code === 'NEEDS_2FA' || msg.includes('需要双重验证码')) {
-                const e = new Error(t('login_2fa'));
-                e.code = 'NEEDS_2FA';
-                throw e;
-            }
-            const e = new Error(`[AUTH] ${t('login_auth_failed', {msg})}`);
-            e.code = 'AUTH_REQUIRED';
-            throw e;
+            throw storeAuthenticationError(error);
         }
     }
 

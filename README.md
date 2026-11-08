@@ -8,7 +8,7 @@
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <a href="release-notes/20261105/release-notes.md">查看新功能</a>
+    <a href="release-notes/20261108/release-notes.md">查看新功能</a>
   </p>
   <p><sub>需要 macOS 26 或更高版本，以及搭载 Apple 芯片的 Mac。</sub></p>
   <br>
@@ -73,15 +73,15 @@ Pastel 使用 SwiftUI 构建，采用 Apple 的最新 Liquid Glass 设计语言�
   <img width="640" alt="Pastel Apple 账户设置" src="https://github.com/user-attachments/assets/b40db4c9-3e27-4bd4-9f1e-82ed0ecc29a0">
 </p>
 
-Apple 账户密码与会话数据使用 AES-GCM 加密保存，主密钥由 macOS Keychain 保护。Pastel 使用 macOS StoreServices 完成登录和下载，因此需要搭载 Apple 芯片的实体 Mac；虚拟机不受支持。
+Apple 账户密码与会话数据使用 AES-GCM 加密保存，主密钥由 macOS Keychain 保护。Pastel 使用 Apple App Store 认证与下载服务，并复用已加密保存的认证状态，减少重复登录与等待。
 
 <br>
 
-## Pastel 20261105
+## Pastel 20261108
 
-此更新修复“不再更新”功能失效的问题，并包含 IPA 账户信息兼容性改进。受影响的文件请勾选“不再更新”后重新下载并安装。
+此更新修复近期 Apple 账户登录与下载失败的问题，支持多个下载任务并行传输，并改进登录、下载准备及超时提示。
 
-[阅读完整更新日志](release-notes/20261105/release-notes.md)
+[阅读完整更新日志](release-notes/20261108/release-notes.md)
 
 <br>
 
@@ -94,7 +94,7 @@ cd ..
 open Pastel.xcodeproj
 ```
 
-使用 Xcode 构建并运行 `Pastel` 方案。
+使用 Xcode 构建并运行 `Pastel` 方案，无需 Apple 开发者账户。需要生成 DMG 时，运行 `sh Scripts/BuildAdHocDMG.sh`；修改下载辅助组件后，先按 [StoreHelper 构建说明](StoreHelper/README.md) 更新随附的二进制文件。
 
 <details>
   <summary>开源项目与致谢</summary>

@@ -1052,6 +1052,40 @@ private final class IBeamCursorRectView: NSView {
     }
 }
 
+enum StoreOperationPhase: String {
+    case waiting, preparing, authenticating, authorizing, transferring, packaging
+
+    var title: String {
+        switch self {
+        case .waiting: String(localized: "等待认证")
+        case .preparing: String(localized: "准备中")
+        case .authenticating: String(localized: "认证中")
+        case .authorizing: String(localized: "获取许可")
+        case .transferring: String(localized: "连接下载")
+        case .packaging: String(localized: "处理中")
+        }
+    }
+
+    var message: String {
+        switch self {
+        case .waiting: String(localized: "正在等待其他任务完成认证…")
+        case .preparing: String(localized: "首次使用正在准备 Apple 认证组件，可能需要几分钟…")
+        case .authenticating: String(localized: "正在登录并验证 Apple 账户…")
+        case .authorizing: String(localized: "正在获取 App 下载许可…")
+        case .transferring: String(localized: "正在连接下载服务器…")
+        case .packaging: String(localized: "正在处理下载文件…")
+        }
+    }
+
+    static func latest(in log: String) -> Self? {
+        log.split(separator: "\n").reversed().compactMap { line in
+            let prefix = "@@IPA:phase="
+            guard line.hasPrefix(prefix) else { return nil }
+            return Self(rawValue: String(line.dropFirst(prefix.count)))
+        }.first
+    }
+}
+
 func ipaIsVerificationChallenge(_ text: String) -> Bool {
     return text.contains("[2FA]")
 }
@@ -1081,7 +1115,7 @@ func downloadErrorMessage(from log: String) -> String {
     }
 
     if ipaIsVerificationChallenge(text) {
-        return String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。")
+        return String(localized: "Apple 需要双重认证验证码。请在收到验证码后输入。")
     }
     if text.localizedCaseInsensitiveContains("SAP")
         || text.localizedCaseInsensitiveContains("AppleMediaServices")
@@ -1092,8 +1126,7 @@ func downloadErrorMessage(from log: String) -> String {
         || text.localizedCaseInsensitiveContains("password token is expired")
         || text.contains("本地会话可能已失效")
         || text.contains("[AUTH]")
-        || text.contains("@@IPA:auth_required=1")
-        || text.contains("登录认证失败") {
+        || text.contains("@@IPA:auth_required=1") {
         return String(localized: "Apple 账户会话已失效。请重新登录后再试。")
     }
     if text.contains("账号或密码不正确")
@@ -1141,7 +1174,6 @@ func downloadRequiresRelogin(from log: String) -> Bool {
         || log.contains("本地会话可能已失效")
         || log.contains("[AUTH]")
         || log.contains("@@IPA:auth_required=1")
-        || log.contains("登录认证失败")
 }
 
 private func cleanDownloadErrorDetail(_ line: String) -> String? {
@@ -1525,7 +1557,13 @@ final class AccountStore {
             let d = h.availableData
             guard !d.isEmpty else { return }
             let t = String(data: d, encoding: .utf8) ?? String(decoding: d, as: UTF8.self)
-            Task { @MainActor in self?.validationLog += t.replacingOccurrences(of: "\r", with: "\n") }
+            Task { @MainActor in
+                guard let self else { return }
+                self.validationLog += t.replacingOccurrences(of: "\r", with: "\n")
+                if self.isValidating, let phase = StoreOperationPhase.latest(in: self.validationLog) {
+                    self.validationMessage = phase.message
+                }
+            }
         }
         out.fileHandleForReading.readabilityHandler = handler
         err.fileHandleForReading.readabilityHandler = handler
@@ -1648,7 +1686,9 @@ final class DownloadManager {
         var label: String
         var status: JobStatus = .running
         var log: String = ""
-        var progress: Double? = 0
+        var progress: Double? = nil
+        var phase: StoreOperationPhase?
+        var phaseBuffer = ""
         var isPackaging: Bool = false
         var needsCode: Bool = false
         var awaitingSession: Bool = false
@@ -1820,7 +1860,14 @@ final class DownloadManager {
         guard !discardedJobIDs.contains(id) else { return }
         guard var job = jobs[id] else { return }
         let normalized = text.replacingOccurrences(of: "\r", with: "\n")
-        if normalized.contains("@@IPA:phase=packaging") { job.isPackaging = true }
+        job.phaseBuffer += normalized
+        if let end = job.phaseBuffer.lastIndex(of: "\n") {
+            if let phase = StoreOperationPhase.latest(in: String(job.phaseBuffer[...end])) {
+                job.phase = phase
+                job.isPackaging = phase == .packaging
+            }
+            job.phaseBuffer = String(job.phaseBuffer[job.phaseBuffer.index(after: end)...])
+        }
         if normalized.contains("@@IPA:requires-acquisition") { job.needsAcquisition = true }
         let cleaned = normalized
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -2574,7 +2621,7 @@ struct ContentView: View {
                 accountFeature.pendingCodeJobID = nil
             }
         } message: {
-            Text(String(localized: "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。"))
+            Text(String(localized: "Apple 需要双重认证验证码。请在收到验证码后输入。"))
         }
         .alert(
             String(localized: "需要获取 App"),
@@ -3288,6 +3335,7 @@ struct ContentView: View {
                                             isDownloading: downloads.isRunning(jobID),
                                             downloadProgress: downloads.job(jobID)?.progress,
                                             isPackaging: downloads.job(jobID)?.isPackaging ?? false,
+                                            downloadPhase: downloads.job(jobID)?.phase,
                                             hasError: downloads.job(jobID)?.status == .failed,
                                             errorLog: downloads.job(jobID)?.log ?? "",
                                             downloadedURL: downloadedURL,
@@ -3474,7 +3522,7 @@ struct ContentView: View {
                 signIn: showRelogin
             )
         case .running:
-            DownloadProgressPill(progress: manualDownloadJob?.progress, isPackaging: manualDownloadJob?.isPackaging ?? false)
+            DownloadProgressPill(progress: manualDownloadJob?.progress, isPackaging: manualDownloadJob?.isPackaging ?? false, phase: manualDownloadJob?.phase)
                 .glassEffectID("manual-download-action", in: manualActionGlassNamespace)
                 .glassEffectTransition(.matchedGeometry)
         case .downloaded:
@@ -3853,6 +3901,7 @@ struct ContentView: View {
                                     isDownloading: downloads.isRunning(jobID),
                                     downloadProgress: downloads.job(jobID)?.progress,
                                     isPackaging: downloads.job(jobID)?.isPackaging ?? false,
+                                            downloadPhase: downloads.job(jobID)?.phase,
                                     hasError: downloads.job(jobID)?.status == .failed,
                                     errorLog: downloads.job(jobID)?.log ?? "",
                                     downloadedURL: downloadedURL,
@@ -6399,6 +6448,7 @@ struct RetryingAsyncImage<Content: View, Placeholder: View>: View {
 struct DownloadProgressPill: View {
     let progress: Double?
     var isPackaging: Bool = false
+    var phase: StoreOperationPhase?
 
     private var normalizedProgress: Double {
         min(max(progress ?? 0, 0), 1)
@@ -6451,7 +6501,10 @@ struct DownloadProgressPill: View {
                 .font(.caption.weight(.semibold))
                 .monospacedDigit()
         } else {
-            Text(String(localized: "下载中"))
+            Text(phase?.title ?? String(localized: "下载中"))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .help(phase?.message ?? String(localized: "下载中"))
                 .foregroundStyle(foregroundStyle)
                 .font(.caption.weight(.semibold))
                 .monospacedDigit()
@@ -7356,7 +7409,7 @@ struct AccountVerificationView: View {
                     .foregroundStyle(.orange)
             }
             #endif
-            Text(String(localized: "请输入 Apple 双重认证的六位验证码。如果没有收到，请在受信任设备的“登录与安全性”中获取。"))
+            Text(String(localized: "请输入 Apple 双重认证的六位验证码。"))
                 .fixedSize(horizontal: false, vertical: true)
             TextField(String(localized: "验证码"), text: $code)
                 .textContentType(.oneTimeCode)

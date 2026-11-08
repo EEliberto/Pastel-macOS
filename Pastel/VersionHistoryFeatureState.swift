@@ -224,6 +224,7 @@ struct VersionSelectionRow: View {
     let isDownloading: Bool
     let downloadProgress: Double?
     let isPackaging: Bool
+    var downloadPhase: StoreOperationPhase? = nil
     let hasError: Bool
     let errorLog: String
     let downloadedURL: URL?
@@ -337,7 +338,7 @@ struct VersionSelectionRow: View {
                 signIn: onSignIn
             )
         case .running:
-            DownloadProgressPill(progress: downloadProgress, isPackaging: isPackaging)
+            DownloadProgressPill(progress: downloadProgress, isPackaging: isPackaging, phase: downloadPhase)
                 .glassEffectID("version-row-action", in: actionGlassNamespace)
                 .glassEffectTransition(.matchedGeometry)
         case .downloaded:

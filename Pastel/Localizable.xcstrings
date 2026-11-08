@@ -1,6 +1,116 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "等待认证": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting"
+          }
+        }
+      }
+    },
+    "准备中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing"
+          }
+        }
+      }
+    },
+    "认证中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing in"
+          }
+        }
+      }
+    },
+    "获取许可": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authorizing"
+          }
+        }
+      }
+    },
+    "连接下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting"
+          }
+        }
+      }
+    },
+    "处理中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing"
+          }
+        }
+      }
+    },
+    "正在等待其他任务完成认证…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for another task to finish authentication…"
+          }
+        }
+      }
+    },
+    "首次使用正在准备 Apple 认证组件，可能需要几分钟…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing Apple authentication components for first use. This may take a few minutes…"
+          }
+        }
+      }
+    },
+    "正在获取 App 下载许可…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Getting permission to download the app…"
+          }
+        }
+      }
+    },
+    "正在连接下载服务器…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connecting to the download server…"
+          }
+        }
+      }
+    },
+    "正在处理下载文件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Processing the downloaded file…"
+          }
+        }
+      }
+    },
     "" : {
 
     },
@@ -731,42 +841,42 @@
     "Apple 账户或密码不正确。请检查后再试。" : {
 
     },
-    "Apple 需要双重认证验证码。Apple 不一定会自动推送验证码；请在受信任设备的“登录与安全性”中获取六位验证码。" : {
+    "Apple 需要双重认证验证码。请在收到验证码后输入。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple requires a two-factor authentication code. Apple may not send one automatically; get a six-digit code from Sign-In & Security on a trusted device."
+            "value" : "Apple requires a two-factor authentication code. Enter the code when you receive it."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appleには2ファクタ認証コードが必要です。コードが自動送信されない場合は、信頼済みデバイスの「サインインとセキュリティ」から6桁のコードを取得してください。"
+            "value" : "Appleには2ファクタ認証コードが必要です。コードが届いたら入力してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 이중 인증 코드가 필요합니다. 코드가 자동으로 전송되지 않으면 신뢰하는 기기의 ‘로그인 및 보안’에서 6자리 코드를 받으세요."
+            "value" : "Apple 이중 인증 코드가 필요합니다. 코드를 받으면 입력하세요."
           }
         },
         "th" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple ต้องใช้รหัสการยืนยันสองชั้น หากไม่ได้รับรหัสโดยอัตโนมัติ ให้ขอรหัสหกหลักจาก “การลงชื่อเข้าและความปลอดภัย” บนอุปกรณ์ที่เชื่อถือได้"
+            "value" : "Apple ต้องใช้รหัสการยืนยันสองชั้น โปรดป้อนรหัสเมื่อได้รับ"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 需要雙重驗證碼。Apple 不一定會自動推送驗證碼；請在受信任裝置的「登入與安全性」中取得六位數驗證碼。"
+            "value" : "Apple 需要雙重驗證碼。請在收到驗證碼後輸入。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple 需要雙重認證驗證碼。Apple 不一定會自動推送驗證碼；請在受信任裝置的「登入與保安」中取得六位數驗證碼。"
+            "value" : "Apple 需要雙重認證驗證碼。請在收到驗證碼後輸入。"
           }
         }
       }
@@ -9080,42 +9190,42 @@
         }
       }
     },
-    "请输入 Apple 双重认证的六位验证码。如果没有收到，请在受信任设备的“登录与安全性”中获取。" : {
+    "请输入 Apple 双重认证的六位验证码。" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Enter the six-digit Apple verification code. If you haven’t received one, get a code from Sign-In & Security on a trusted device."
+            "value" : "Enter the six-digit Apple verification code."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Appleの6桁の確認コードを入力してください。届いていない場合は、信頼済みデバイスの「サインインとセキュリティ」から取得できます。"
+            "value" : "Appleの6桁の確認コードを入力してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple의 6자리 인증 코드를 입력하세요. 받지 못했다면 신뢰하는 기기의 로그인 및 보안에서 코드를 받으세요."
+            "value" : "Apple의 6자리 인증 코드를 입력하세요."
           }
         },
         "th" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ป้อนรหัสยืนยัน Apple 6 หลัก หากยังไม่ได้รับ ให้รับรหัสจากลงชื่อเข้าใช้และความปลอดภัยบนอุปกรณ์ที่เชื่อถือได้"
+            "value" : "ป้อนรหัสยืนยัน Apple 6 หลัก"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請輸入 Apple 雙重認證的六位驗證碼。如果沒有收到，請在受信任裝置的「登入與安全性」中取得。"
+            "value" : "請輸入 Apple 雙重認證的六位驗證碼。"
           }
         },
         "zh-HK" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "請輸入 Apple 雙重認證的六位驗證碼。如果沒有收到，請在受信任裝置的「登入與安全性」中取得。"
+            "value" : "請輸入 Apple 雙重認證的六位驗證碼。"
           }
         }
       }

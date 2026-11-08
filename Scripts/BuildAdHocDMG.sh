@@ -13,7 +13,9 @@ output_dir=${PASTEL_OUTPUT_DIR:-"${project_root}/dist"}
 
 export DEVELOPER_DIR="$developer_dir"
 
-sh "${project_root}/Scripts/VerifyReleaseSigningIdentity.sh"
+# Local distribution requires no Apple Developer membership or certificate.
+# Retain an opt-in identity for users who have configured one.
+release_identity=${PASTEL_SIGNING_IDENTITY:--}
 
 sh "${project_root}/Scripts/VerifyDeviceGUIDImplementation.sh" \
     "${project_root}/Pastel/PastelApp.swift"
@@ -24,9 +26,9 @@ xcodebuild \
     -configuration Release \
     -derivedDataPath "$derived_data" \
     CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="Pastel Release Signing" \
+    CODE_SIGN_IDENTITY="$release_identity" \
     DEVELOPMENT_TEAM= \
-    CODE_SIGNING_ALLOWED=YES \
+    CODE_SIGNING_ALLOWED=NO \
     build
 
 app="${derived_data}/Build/Products/Release/Pastel.app"
@@ -34,11 +36,10 @@ node="${app}/Contents/Resources/node/bin/node"
 signer="${app}/Contents/Resources/sap-signer"
 store_helper="${app}/Contents/Resources/store-helper"
 sparkle="${app}/Contents/Frameworks/Sparkle.framework"
-release_identity="Pastel Release Signing"
 
 test -d "$app"
-# Re-sign outside Xcode's build subprocess so the complete self-signed
-# certificate is embedded. Keep this order: leaf executables, framework, app.
+# Apply local ad-hoc signatures required by Apple silicon, with no developer
+# certificate. Keep this order: leaf executables, framework, app.
 codesign --force --sign "$release_identity" "$signer"
 codesign --force --sign "$release_identity" --options runtime \
     --entitlements "${project_root}/Scripts/NodeJIT.entitlements" "$node"

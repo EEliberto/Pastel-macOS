@@ -3,8 +3,10 @@ module github.com/EEliberto/PastelStoreHelper
 go 1.26.5
 
 require (
-	github.com/majd/ipatool/v2 v2.7.1-0.20261025002001-d9c0247daea5
+	github.com/majd/ipatool/v2 v2.7.1-0.20261108041618-001d889896fc
 	github.com/schollz/progressbar/v3 v3.19.1
+	golang.org/x/sys v0.48.0
+	howett.net/plist v1.0.1
 )
 
 require (
@@ -62,9 +64,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	go4.org v0.0.0-20260112195520-a5071408f32f // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/term v0.46.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
-	howett.net/plist v1.0.1 // indirect
 )
