@@ -22,8 +22,6 @@
 3. 收到明确的令牌过期响应时，自动重新认证并重试一次，减少不必要的手动登录；需要双重认证时仍按提示完成验证。
 4. 保留已有许可的直接下载流程，继续支持多个任务并行传输。
 
-已使用 Meta AI、红果短剧完成获取许可与下载验证。
-
 如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
 ]]></description>
             <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261109/Pastel-20261109-build-2026110901.dmg" sparkle:edSignature="LLUAPJ5BT7QM2+/96vkZYs57Yb9z8cvDiyC1Mfp5E/FH9wYlssj8cV63Z2jwn6nEh+mrhWB0rvXCpqL0DxO7Aw==" length="72372677" type="application/octet-stream"/>
