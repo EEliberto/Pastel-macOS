@@ -531,9 +531,9 @@ export class Ipa {
             const message = error.message || String(error);
             // 用稳定的 error.code 判断商店会话过期（cookie/令牌失效），不依赖文案语言；Apple 英文消息保留兜底。
             const code = error.code;
-            const sessionMayBeExpired = this.usedCachedSession
-                && (code === 'TOKEN_EXPIRED'
-                    || /401|403|Your password has changed\.?|password token is expired|token|session|authenticate|authorization|Sign In to the iTunes Store/i.test(message))
+            const sessionMayBeExpired = (code === 'TOKEN_EXPIRED'
+                || (this.usedCachedSession
+                    && /401|403|Your password has changed\.?|password token is expired|token|session|authenticate|authorization|Sign In to the iTunes Store/i.test(message)))
                 && !/License not found|已拥有|already|not found/i.test(message);
             if (!sessionMayBeExpired) throw error;
 

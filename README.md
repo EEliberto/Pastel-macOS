@@ -8,7 +8,7 @@
   <p>
     <a href="https://github.com/EEliberto/Pastel-macOS/releases/latest"><strong>下载 Pastel</strong></a>
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <a href="release-notes/20261108/release-notes.md">查看新功能</a>
+    <a href="release-notes/20261109/release-notes.md">查看新功能</a>
   </p>
   <p><sub>需要 macOS 26 或更高版本，以及搭载 Apple 芯片的 Mac。</sub></p>
   <br>
@@ -77,11 +77,11 @@ Apple 账户密码与会话数据使用 AES-GCM 加密保存，主密钥由 macO
 
 <br>
 
-## Pastel 20261108
+## Pastel 20261109
 
-此更新修复近期 Apple 账户登录与下载失败的问题，支持多个下载任务并行传输，并改进登录、下载准备及超时提示。
+此更新修复首次下载尚未获取的免费 App 时反复提示重新登录的问题，改进免费许可获取与令牌过期后的自动重试。
 
-[阅读完整更新日志](release-notes/20261108/release-notes.md)
+[阅读完整更新日志](release-notes/20261109/release-notes.md)
 
 <br>
 

@@ -1,7 +1,9 @@
 # Pastel Store Helper
 
-The helper pins ipatool to `001d889896fc` (2026-11-08), including native Store
-AMD/Anisette provisioning and the corresponding commerce request proofs.
+The helper pins ipatool to `v2.8.0` (`72c47d538b72`, 2026-11-08), including
+native Store AMD/Anisette provisioning and commerce request proofs. This version
+also sends the current Store User-Agent when acquiring a free App license; the
+older default User-Agent can incorrectly produce a password-token-expired error.
 
 Rebuild the executable shipped with Xcode after changing this directory:
 
