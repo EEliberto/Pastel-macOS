@@ -28,7 +28,7 @@ test('downloads check the existing license before entering the acquisition fallb
     const source = readFileSync(new URL('../src/ipa.js', import.meta.url), 'utf8');
     const runDownload = source.match(/async runDownload\([\s\S]*?\n    async run\(/)?.[0] || '';
     assert.notEqual(runDownload, '');
-    const firstDownload = runDownload.indexOf("helperRequest('download'");
+    const firstDownload = runDownload.indexOf("helperRequest(prepareOnly ? 'prepareNative' : 'download'");
     const purchase = runDownload.indexOf("helperRequest('purchase'");
     assert.ok(firstDownload >= 0);
     assert.ok(purchase > firstDownload);

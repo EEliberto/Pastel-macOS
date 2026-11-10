@@ -1,3 +1,4 @@
+import {resumeWorkspace} from './resumable-download.js';
 import {promises as fsPromises} from 'fs';
 import os from 'os';
 import {createCipheriv, createDecipheriv, createHash, randomBytes} from 'crypto';
@@ -443,18 +444,31 @@ export class Ipa {
         };
     }
 
-    async runDownload({dir = '.', APPID, appVerId} = {}) {
+    async runDownload({dir = '.', APPID, appVerId, prepareOnly = false} = {}) {
         this.dir = dir;
+        const workspace = await resumeWorkspace({
+            directory: dir, taskID: process.env.IPA_TASK_ID, email: this.creds.APPLE_ID,
+            appID: APPID, versionID: appVerId || '',
+            resolveVersion: async () => {
+                const result = await this._listVersionIdsOnce(APPID);
+                if (result.requiresAcquisition) {
+                    console.log('@@IPA:requires-acquisition');
+                    throw Object.assign(new Error('license is required'), {code: 'LICENSE_REQUIRED'});
+                }
+                return result.latestVersionId;
+            },
+        });
         const app = await this.helperApp(APPID);
         const platform = process.env.IPA_APP_PLATFORM || 'iphone';
         try {
             const downloadRequest = {
-                app, platform, versionId: appVerId || '', outputPath: dir,
+                app, platform, versionId: workspace.versionID || '', outputPath: workspace.directory,
+                preservePartial: Boolean(process.env.IPA_TASK_ID),
                 removeAppStoreUpdateMetadata: process.env.IPA_REMOVE_APP_STORE_UPDATE_METADATA === '1',
             };
             let result;
             try {
-                result = await this.helperRequest('download', downloadRequest, {progress: true});
+                result = await this.helperRequest(prepareOnly ? 'prepareNative' : 'download', downloadRequest, {progress: !prepareOnly});
             } catch (error) {
                 if (error.code !== 'LICENSE_REQUIRED') throw error;
                 if (app.price > 0) throw new Error(t('paid_not_purchased'));
@@ -463,10 +477,14 @@ export class Ipa {
                     throw error;
                 }
                 await this.helperRequest('purchase', {app, platform});
-                result = await this.helperRequest('download', downloadRequest, {progress: true});
+                result = await this.helperRequest(prepareOnly ? 'prepareNative' : 'download', downloadRequest, {progress: !prepareOnly});
+            }
+            if (prepareOnly) {
+                return {ok: true, nativePlan: result.nativePlan, account: result.account};
             }
             this.out = result?.download?.DestinationPath || '';
             if (!this.out) throw new Error(t('appinfo_nodata'));
+            this.out = await workspace.finish(this.out);
             console.log(t('file_archived', {out: this.out}));
         } finally {
             Store.cleanup?.();

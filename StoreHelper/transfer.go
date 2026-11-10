@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/majd/ipatool/v2/pkg/util/operatingsystem"
@@ -14,6 +15,7 @@ import (
 // interface to release the authentication transaction at that exact boundary.
 // Other filesystem calls (stat, mkdir, metadata patching) do not release it.
 type transferOperatingSystem struct {
+	preserveDownloadFiles bool
 	operatingsystem.OperatingSystem
 	once           sync.Once
 	beforeTransfer func() error
@@ -46,4 +48,14 @@ func appleAssetsCached() bool {
 		}
 	}
 	return true
+}
+
+// Managed tasks retain the raw archive through packaging. If the app exits
+// during SINF/metadata finalization, the next request can reuse all CDN bytes.
+// The Node workspace owns deletion after successful publication or cancellation.
+func (s *transferOperatingSystem) Remove(name string) error {
+	if s.preserveDownloadFiles && strings.HasSuffix(name, ".ipa.tmp") {
+		return nil
+	}
+	return s.OperatingSystem.Remove(name)
 }

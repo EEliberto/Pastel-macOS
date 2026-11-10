@@ -183,6 +183,9 @@ struct DownloadedVersionHistoryRow: View {
     let rowIndex: Int
     let isSelected: Bool
     @Binding var remoteIconCache: [String: NSImage]
+    var downloadJob: DownloadManager.Job? = nil
+    var onPause: (() -> Void)? = nil
+    var onResume: (() -> Void)? = nil
     let onSelect: () -> Void
     let onReveal: () -> Void
     let onAirDrop: () -> Void
@@ -208,13 +211,13 @@ struct DownloadedVersionHistoryRow: View {
                 HoverCopyIDText(value: item.versionId, isVisible: isHovered, isSelected: isSelected)
                     .frame(width: columns.versionID, alignment: .leading)
 
-                Text(item.sizeText)
+                Text(downloadJob?.status.displayName ?? item.sizeText)
                     .font(.callout)
                     .foregroundStyle(secondaryTextStyle)
                     .lineLimit(1)
                     .frame(width: columns.size, alignment: .leading)
 
-                Text(region.name)
+                Text(item.pendingRegion ?? region.name)
                     .font(.callout)
                     .foregroundStyle(secondaryTextStyle)
                     .lineLimit(1)
@@ -237,8 +240,18 @@ struct DownloadedVersionHistoryRow: View {
 
                 Color.clear.frame(width: Self.actionGap, height: 1)
 
-                FileActionsBar(isSelected: isSelected, onReveal: onReveal, onAirDrop: onAirDrop, onDelete: onDelete)
-                    .frame(width: Self.actionColumnWidth, alignment: .trailing)
+                Group {
+                    if let job = downloadJob {
+                        DownloadProgressPill(
+                            progress: job.progress, isPackaging: job.isPackaging, phase: job.phase,
+                            isPaused: job.status != .running, onResume: onResume,
+                            onPause: onPause, onCancel: onDelete
+                        )
+                    } else {
+                        FileActionsBar(isSelected: isSelected, onReveal: onReveal, onAirDrop: onAirDrop, onDelete: onDelete)
+                    }
+                }
+                .frame(width: Self.actionColumnWidth, alignment: .trailing)
             }
             .padding(.horizontal, Self.rowHorizontalPadding)
             .frame(width: proxy.size.width, height: 46, alignment: .leading)
@@ -246,9 +259,7 @@ struct DownloadedVersionHistoryRow: View {
         .frame(maxWidth: .infinity, minHeight: 46, maxHeight: 46, alignment: .leading)
         .background(rowFill, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .onTapGesture {
-            onSelect()
-        }
+        .simultaneousGesture(TapGesture().onEnded { onSelect() })
         .onHover { isHovered = $0 }
     }
 

@@ -1,3 +1,15 @@
+// Stop detached workers after an application crash; the partial file stays on disk.
+const ownerPID = Number(process.env.IPA_PARENT_PID);
+if (Number.isInteger(ownerPID) && ownerPID > 1) {
+    const ownerWatch = setInterval(() => {
+        if (process.ppid !== ownerPID) {
+            clearInterval(ownerWatch);
+            process.kill(process.pid, 'SIGTERM');
+        }
+    }, 250);
+    ownerWatch.unref();
+}
+
 import 'dotenv/config';
 import {Ipa} from './src/ipa.js';
 import {featuredApps, fetchVersions, lookupApp, searchApps} from './src/catalog.js';
@@ -116,15 +128,26 @@ async function runCommand(command, args) {
             return;
         }
 
-        await app.run({
+        const result = await app.run({
             dir: process.env.DOWNLOAD_DIR || './app',
             APPID: requiredEnv('DOWNLOAD_APPID'),
             appVerId: process.env.DOWNLOAD_VERSION_ID || '',
+            prepareOnly: process.env.IPA_NATIVE_PREPARE === '1',
         });
 
+        if (process.env.IPA_NATIVE_PREPARE === '1') {
+            // Private IPC consumed only by the native engine, never a task log.
+            printJSON(result);
+            return;
+        }
         console.log('@@IPA:result=success');
         console.log(t('all_done'));
     } catch (err) {
+        if (process.env.IPA_NATIVE_PREPARE === '1') {
+            printJSON({ok: false, code: err?.code || 'STORE_FAILED', message: err.message || 'Apple authentication failed'});
+            process.exitCode = 1;
+            return;
+        }
         if (err?.code === 'AUTH_REQUIRED' || err?.code === 'TOKEN_EXPIRED') {
             console.error('@@IPA:auth_required=1');
         }
@@ -134,7 +157,7 @@ async function runCommand(command, args) {
         // StoreServices/curl/HTTP 依赖偶尔会留下活跃句柄。业务和输出都已完成后
         // 明确结束 CLI，避免 macOS 端永远等不到 Process.terminationHandler。
         const exitCode = process.exitCode || 0;
-        const stream = exitCode === 0 ? process.stdout : process.stderr;
+        const stream = exitCode === 0 || process.env.IPA_NATIVE_PREPARE === '1' ? process.stdout : process.stderr;
         await new Promise(resolve => stream.write('', resolve));
         process.exit(exitCode);
     }

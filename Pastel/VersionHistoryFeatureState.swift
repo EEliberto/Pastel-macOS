@@ -225,6 +225,10 @@ struct VersionSelectionRow: View {
     let downloadProgress: Double?
     let isPackaging: Bool
     var downloadPhase: StoreOperationPhase? = nil
+    var isPaused: Bool = false
+    var onResume: (() -> Void)? = nil
+    var onPause: (() -> Void)? = nil
+    var onCancel: (() -> Void)? = nil
     let hasError: Bool
     let errorLog: String
     let downloadedURL: URL?
@@ -338,9 +342,7 @@ struct VersionSelectionRow: View {
                 signIn: onSignIn
             )
         case .running:
-            DownloadProgressPill(progress: downloadProgress, isPackaging: isPackaging, phase: downloadPhase)
-                .glassEffectID("version-row-action", in: actionGlassNamespace)
-                .glassEffectTransition(.matchedGeometry)
+            DownloadProgressPill(progress: downloadProgress, isPackaging: isPackaging, phase: downloadPhase, isPaused: isPaused, onResume: onResume, onPause: onPause, onCancel: onCancel)
         case .downloaded:
             FileActionsBar(isSelected: isSelected, onReveal: onReveal, onAirDrop: onAirDrop, onDelete: onDelete)
                 .glassEffectID("version-row-action", in: actionGlassNamespace)

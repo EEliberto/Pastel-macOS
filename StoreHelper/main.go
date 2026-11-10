@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/majd/ipatool/v2/pkg/appstore"
 	"github.com/majd/ipatool/v2/pkg/util/operatingsystem"
@@ -16,22 +18,27 @@ import (
 )
 
 type request struct {
-	Command                      string           `json:"command"`
-	Email                        string           `json:"email,omitempty"`
-	Password                     string           `json:"password,omitempty"`
-	Code                         string           `json:"code,omitempty"`
-	GUID                         string           `json:"guid"`
-	SessionKey                   string           `json:"sessionKey,omitempty"`
-	Account                      appstore.Account `json:"account,omitempty"`
-	CookieState                  []storedCookie   `json:"cookieState,omitempty"`
-	App                          appstore.App     `json:"app,omitempty"`
-	Platform                     string           `json:"platform,omitempty"`
-	VersionID                    string           `json:"versionId,omitempty"`
-	OutputPath                   string           `json:"outputPath,omitempty"`
-	RemoveAppStoreUpdateMetadata bool             `json:"removeAppStoreUpdateMetadata,omitempty"`
+	NativePlan                   *appstore.NativeDownloadPlan `json:"nativePlan,omitempty"`
+	RawPath                      string                       `json:"rawPath,omitempty"`
+	ArtworkPath                  string                       `json:"artworkPath,omitempty"`
+	PreservePartial              bool                         `json:"preservePartial,omitempty"`
+	Command                      string                       `json:"command"`
+	Email                        string                       `json:"email,omitempty"`
+	Password                     string                       `json:"password,omitempty"`
+	Code                         string                       `json:"code,omitempty"`
+	GUID                         string                       `json:"guid"`
+	SessionKey                   string                       `json:"sessionKey,omitempty"`
+	Account                      appstore.Account             `json:"account,omitempty"`
+	CookieState                  []storedCookie               `json:"cookieState,omitempty"`
+	App                          appstore.App                 `json:"app,omitempty"`
+	Platform                     string                       `json:"platform,omitempty"`
+	VersionID                    string                       `json:"versionId,omitempty"`
+	OutputPath                   string                       `json:"outputPath,omitempty"`
+	RemoveAppStoreUpdateMetadata bool                         `json:"removeAppStoreUpdateMetadata,omitempty"`
 }
 
 type response struct {
+	NativePlan  *appstore.NativeDownloadPlan `json:"nativePlan,omitempty"`
 	OK          bool                         `json:"ok"`
 	Code        string                       `json:"code,omitempty"`
 	Message     string                       `json:"message,omitempty"`
@@ -53,6 +60,32 @@ func main() {
 	var input request
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 		fail(input, "INVALID_INPUT", err)
+	}
+
+	if input.Command == "finalizeNative" {
+		// Stop a local packaging worker after its owning app exits.
+		if parent, err := strconv.Atoi(os.Getenv("IPA_PARENT_PID")); err == nil && parent > 1 {
+			go func() {
+				ticker := time.NewTicker(250 * time.Millisecond)
+				defer ticker.Stop()
+				for range ticker.C {
+					if os.Getppid() != parent {
+						os.Exit(1)
+					}
+				}
+			}()
+		}
+		if input.NativePlan == nil {
+			fail(input, "INVALID_INPUT", errors.New("missing native download plan"))
+		}
+		output, err := appstore.FinalizeNativeDownload(*input.NativePlan, input.Account, input.RawPath, input.ArtworkPath, input.OutputPath)
+		if err != nil {
+			fail(input, "FINALIZE_FAILED", err)
+		}
+		if err = normalizeAccountMetadata(output.DestinationPath, input.Email, input.RemoveAppStoreUpdateMetadata); err != nil {
+			fail(input, "FINALIZE_FAILED", err)
+		}
+		write(response{OK: true, Download: &output}, 0)
 	}
 
 	mac, err := macAddress(input.GUID)
@@ -92,7 +125,7 @@ func main() {
 	if !appleAssetsCached() {
 		emitPhase("preparing")
 	}
-	fileSystem := &transferOperatingSystem{OperatingSystem: operatingsystem.New(), beforeTransfer: func() error {
+	fileSystem := &transferOperatingSystem{OperatingSystem: operatingsystem.New(), preserveDownloadFiles: input.PreservePartial, beforeTransfer: func() error {
 		if err := saveAuthenticationCookies(keys, input.Email, jar); err != nil {
 			return err
 		}
@@ -152,6 +185,17 @@ func main() {
 		if purchaseErr != nil && !errors.Is(purchaseErr, appstore.ErrLicenseAlreadyExists) {
 			abort(errorCode(purchaseErr), purchaseErr)
 		}
+	case "prepareNative":
+		emitPhase("authorizing")
+		platform, err := appstore.ParsePlatform(input.Platform)
+		if err != nil {
+			abort("INVALID_PLATFORM", err)
+		}
+		plan, err := appstore.PrepareNativeDownload(store, appstore.DownloadInput{Context: context.Background(), Account: account, App: input.App, Platform: platform, ExternalVersionID: input.VersionID, OutputPath: input.OutputPath})
+		if err != nil {
+			abort(errorCode(err), err)
+		}
+		result.NativePlan = &plan
 	case "download":
 		emitPhase("authorizing")
 		platform, platformErr := appstore.ParsePlatform(input.Platform)
@@ -198,11 +242,11 @@ func downloadAuthorizedPackage(store appstore.AppStore, input appstore.DownloadI
 		if info, err := os.Stat(directory); err != nil || !info.IsDir() {
 			directory = filepath.Dir(directory)
 		}
-		staging, err := os.MkdirTemp(directory, ".pastel-no-update-*")
+		staging := filepath.Join(directory, ".pastel-no-update")
+		err := os.MkdirAll(staging, 0700)
 		if err != nil {
 			return appstore.DownloadOutput{}, err
 		}
-		defer os.RemoveAll(staging)
 		input.OutputPath = staging
 	}
 	output, err := store.Download(input)

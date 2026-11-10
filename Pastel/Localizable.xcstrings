@@ -1,6 +1,226 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+  "下载组件返回了过大的响应。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download component returned an oversized response."
+        }
+      }
+    }
+  },
+  "下载组件等待超时或已停止，请重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download component timed out or stopped. Please retry."
+        }
+      }
+    }
+  },
+  "下载服务器响应无效。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download server returned an invalid response."
+        }
+      }
+    }
+  },
+  "下载服务器返回 HTTP %lld。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download server returned HTTP %lld."
+        }
+      }
+    }
+  },
+  "服务器返回的断点位置不一致，请重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The server returned an inconsistent resume offset. Please retry."
+        }
+      }
+    }
+  },
+  "下载文件已变化，正在重新连接。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download file has changed. Reconnecting."
+        }
+      }
+    }
+  },
+  "无法创建下载文件。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download file could not be created."
+        }
+      }
+    }
+  },
+  "下载连接提前中断，将从已下载的位置重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The connection ended early. Retrying from the saved position."
+        }
+      }
+    }
+  },
+  "下载地址已过期，请重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download URL expired. Please retry."
+        }
+      }
+    }
+  },
+  "下载组件返回了无效文件名。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download component returned an invalid filename."
+        }
+      }
+    }
+  },
+  "授权响应无效。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The authorization response is invalid."
+        }
+      }
+    }
+  },
+  "下载组件没有返回有效响应，请重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download component did not return a valid response. Please retry."
+        }
+      }
+    }
+  },
+  "服务器未提供安全的下载地址。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The server did not provide a secure download URL."
+        }
+      }
+    }
+  },
+  "下载文件校验失败，请重试。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "Download integrity verification failed. Please retry."
+        }
+      }
+    }
+  },
+  "无法保存下载任务。": {
+    "localizations": {
+      "en": {
+        "stringUnit": {
+          "state": "translated",
+          "value": "The download task could not be saved."
+        }
+      }
+    }
+  },
+    "暂停下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pause Download"
+          }
+        }
+      }
+    },
+    "继续下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resume Download"
+          }
+        }
+      }
+    },
+    "取消下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel Download"
+          }
+        }
+      }
+    },
+    "下载控制": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Controls"
+          }
+        }
+      }
+    },
+    "已暂停": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paused"
+          }
+        }
+      }
+    },
+    "无法保存下载进度：": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to save download progress: "
+          }
+        }
+      }
+    },
+    "请重新登录 Apple 账户后继续下载。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to your Apple Account again to resume downloading."
+          }
+        }
+      }
+    },
     "等待认证": {
       "localizations": {
         "en": {

@@ -1,0 +1,13 @@
+{
+  "repository": "majd/ipatool",
+  "version": "v2.8.0",
+  "revision": "72c47d538b726df397fbf17bb3af809d69ef51b7",
+  "reviewedRevision": "536d7bacc1c579d4420d0f4d2045368dcbf68732",
+  "patches": [
+    "856323251ab1f45455ccf32d2ae77b17c8b4cca9",
+    "536d7bacc1c579d4420d0f4d2045368dcbf68732"
+  ],
+  "deferred": [
+    "0d99fc2d967b3f5b7696b7327adb277c7e3b5525"
+  ]
+}

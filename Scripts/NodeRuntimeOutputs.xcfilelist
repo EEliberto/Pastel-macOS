@@ -4,3 +4,4 @@ $(CODESIGNING_FOLDER_PATH)/Contents/Resources/node/bin/node
 $(CODESIGNING_FOLDER_PATH)/Contents/Resources/store-helper
 $(CODESIGNING_FOLDER_PATH)/Contents/Resources/sap-signer
 $(DERIVED_FILE_DIR)/pastel-node-runtime.stamp
+$(CODESIGNING_FOLDER_PATH)/Contents/Resources/ipatool-LICENSE.txt

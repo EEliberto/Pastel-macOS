@@ -1,0 +1,90 @@
+name: Monitor Store upstream
+on:
+  schedule:
+    - cron: '23 */12 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: store-upstream
+  cancel-in-progress: false
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.upstream.outputs.changed }}
+      revision: ${{ steps.upstream.outputs.revision }}
+      release: ${{ steps.upstream.outputs.release }}
+      compare: ${{ steps.upstream.outputs.compare }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 Scripts/CheckStoreUpstream.py
+  compatibility:
+    needs: check
+    if: needs.check.outputs.changed == 'true'
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Stage the exact detected candidate
+        env:
+          CANDIDATE: ${{ needs.check.outputs.revision }}
+        run: |
+          python3 - <<'PY'
+          import os, sys
+          sys.path.insert(0, 'Scripts')
+          from CheckStoreUpstream import stage
+          stage('majd/ipatool', os.environ['CANDIDATE'])
+          PY
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: StoreHelper/ipatool/go.mod
+          cache-dependency-path: StoreHelper/go.sum
+      - name: Validate Store adapter against candidate
+        working-directory: StoreHelper
+        run: go test -mod=mod -race ./...
+      - name: Validate upstream Store tests
+        working-directory: StoreHelper/ipatool
+        run: |
+          go generate ./pkg/...
+          go test ./pkg/appstore
+      - name: Validate native transfer
+        run: python3 Scripts/Tests/NativeDownloadTests.py
+  report:
+    needs: [check, compatibility]
+    if: always() && needs.check.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Record one review issue per upstream revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REVISION: ${{ needs.check.outputs.revision }}
+          RELEASE: ${{ needs.check.outputs.release }}
+          COMPARE: ${{ needs.check.outputs.compare }}
+          VALIDATION: ${{ needs.compatibility.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          revision=os.environ['REVISION']
+          title='Store upstream review: '+revision[:12]
+          issues=json.loads(subprocess.check_output(['gh','issue','list','--state','all','--search',title+' in:title','--json','title']))
+          if any(issue['title']==title for issue in issues):
+              print('This revision already has a review issue.'); raise SystemExit(0)
+          body=('Upstream release: '+os.environ['RELEASE']+'\n\nRevision: `'+revision+'`\n\n'
+                '[Source changes]('+os.environ['COMPARE']+')\n\nCompatibility result: **'+os.environ['VALIDATION']+'**. '
+                '[Validation run]('+os.environ['RUN_URL']+')\n\n'
+                'Review the native adapter, run real-account login and authorized download checks, '
+                'then rebuild the bundled helper and publish a signed Pastel update. '
+                'Passing synthetic checks does not prove Apple login or 2FA delivery. '
+                'No user installation or release feed has been changed.')
+          subprocess.run(['gh','issue','create','--title',title,'--body',body],check=True)
+          PY

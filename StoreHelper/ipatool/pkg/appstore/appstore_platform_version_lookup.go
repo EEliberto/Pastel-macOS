@@ -1,0 +1,201 @@
+package appstore
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	gohttp "net/http"
+	"net/url"
+	"strconv"
+	"strings"
+
+	"github.com/majd/ipatool/v2/pkg/http"
+)
+
+var (
+	errPlatformAppNotFound    = errors.New("platform version lookup returned no app")
+	errPlatformOffersNotFound = errors.New("platform version lookup returned no offers")
+)
+
+type platformVersionLookupResult struct {
+	Results map[string]platformVersionLookupItem `json:"results,omitempty"`
+	Data    []catalogVersionLookupItem           `json:"data,omitempty"`
+}
+
+type platformVersionLookupItem struct {
+	BundleID string                       `json:"bundleId,omitempty"`
+	Name     string                       `json:"name,omitempty"`
+	Offers   []platformVersionLookupOffer `json:"offers,omitempty"`
+}
+
+type platformVersionLookupOffer struct {
+	BuyParams string                       `json:"buyParams,omitempty"`
+	Version   platformVersionLookupVersion `json:"version,omitempty"`
+}
+
+type platformVersionLookupVersion struct {
+	Display    string                    `json:"display,omitempty"`
+	ExternalID platformVersionExternalID `json:"externalId,omitempty"`
+}
+
+type platformVersionExternalID string
+
+func (id *platformVersionExternalID) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+
+	var stringID string
+	if err := json.Unmarshal(data, &stringID); err == nil {
+		*id = platformVersionExternalID(stringID)
+
+		return nil
+	}
+
+	var numberID json.Number
+	if err := json.Unmarshal(data, &numberID); err == nil {
+		*id = platformVersionExternalID(numberID.String())
+
+		return nil
+	}
+
+	return fmt.Errorf("invalid external version id %s", string(data))
+}
+
+func (t *appstore) lookupLatestExternalVersionID(acc Account, app App, platform Platform) (string, error) {
+	if app.ID == 0 {
+		return "", errors.New("app ID is required for platform version lookup")
+	}
+
+	countryCode, err := countryCodeFromStoreFront(acc.StoreFront)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve the country code: %w", err)
+	}
+
+	if platform == PlatformVisionOS {
+		return t.lookupLatestVisionOSExternalVersionID(app.ID, countryCode)
+	}
+
+	metadataPlatform, err := platform.metadataPlatform()
+	if err != nil {
+		return "", fmt.Errorf("failed to create platform version lookup request: %w", err)
+	}
+
+	catalogs := []string{metadataPlatform}
+	if platform == PlatformIPhone || platform == PlatformIPad || platform == PlatformWatchOS {
+		// Some storefronts have no enterprise listing even when the consumer
+		// catalogs contain the app. Keep the account's country for each lookup.
+		catalogs = append(catalogs, "iphone", "ipad")
+	}
+
+	var lastErr error
+
+	for _, catalog := range catalogs {
+		request := t.platformVersionLookupRequest(app.ID, countryCode, catalog)
+
+		res, err := t.platformClient.Send(request)
+		if err != nil {
+			return "", fmt.Errorf("platform version lookup request failed: %w", err)
+		}
+
+		if res.StatusCode != gohttp.StatusOK {
+			return "", NewErrorWithMetadata(errors.New("platform version lookup request failed"), res)
+		}
+
+		item, ok := res.Data.Results[strconv.FormatInt(app.ID, 10)]
+		if !ok {
+			lastErr = NewErrorWithMetadata(errPlatformAppNotFound, res)
+
+			continue
+		}
+
+		if len(item.Offers) == 0 {
+			lastErr = NewErrorWithMetadata(errPlatformOffersNotFound, res)
+
+			continue
+		}
+
+		offer := item.Offers[0]
+		externalVersionID := string(offer.Version.ExternalID)
+
+		if externalVersionID == "" {
+			externalVersionID, err = externalVersionIDFromBuyParams(offer.BuyParams)
+			if err != nil {
+				return "", fmt.Errorf("failed to parse buy params: %w", err)
+			}
+		}
+
+		if externalVersionID == "" {
+			return "", NewErrorWithMetadata(errors.New("platform version lookup returned no external version id"), res)
+		}
+
+		return externalVersionID, nil
+	}
+
+	if platform == PlatformIPhone || platform == PlatformIPad {
+		// Apple Arcade apps can be absent from every MDM catalog. The App
+		// Store's catalog API still exposes their current iOS version.
+		version, err := t.lookupLatestIOSExternalVersionID(app, countryCode, platform)
+		if err == nil {
+			return version, nil
+		}
+
+		lastErr = fmt.Errorf("%w; iOS catalog fallback failed: %w", lastErr, err)
+	}
+
+	return "", fmt.Errorf("app %d in storefront %s (catalogs: %s): %w", app.ID, countryCode, strings.Join(catalogs, ", "), lastErr)
+}
+
+func (t *appstore) lookupLatestVisionOSExternalVersionID(appID int64, countryCode string) (string, error) {
+	request := http.Request{
+		URL:            visionProductURL(appID, countryCode),
+		Method:         http.MethodGET,
+		ResponseFormat: http.ResponseFormatRaw,
+	}
+
+	res, err := t.storefrontClient.Send(request)
+	if err != nil {
+		return "", fmt.Errorf("visionOS version lookup request failed: %w", err)
+	}
+
+	if res.StatusCode != gohttp.StatusOK {
+		return "", NewErrorWithMetadata(errors.New("visionOS version lookup request failed"), res)
+	}
+
+	externalVersionID, err := visionExternalVersionID(res.Data, appID)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse visionOS version lookup response: %w", err)
+	}
+
+	return externalVersionID, nil
+}
+
+func (*appstore) platformVersionLookupRequest(appID int64, countryCode, metadataPlatform string) http.Request {
+	params := url.Values{}
+	params.Add("version", "2")
+	params.Add("id", strconv.FormatInt(appID, 10))
+	params.Add("p", "mdm-lockup")
+	params.Add("caller", "MDM")
+	params.Add("platform", metadataPlatform)
+	params.Add("cc", strings.ToLower(countryCode))
+	params.Add("l", "en")
+
+	return http.Request{
+		URL:            fmt.Sprintf("https://uclient-api.itunes.apple.com/WebObjects/MZStorePlatform.woa/wa/lookup?%s", params.Encode()),
+		Method:         http.MethodGET,
+		ResponseFormat: http.ResponseFormatJSON,
+	}
+}
+
+func externalVersionIDFromBuyParams(buyParams string) (string, error) {
+	if buyParams == "" {
+		return "", nil
+	}
+
+	values, err := url.ParseQuery(buyParams)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse query: %w", err)
+	}
+
+	return values.Get("appExtVrsId"), nil
+}

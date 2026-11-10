@@ -15,6 +15,7 @@ test('both direct download and acquisition retry forward the no-update option', 
             process.env.IPA_REMOVE_APP_STORE_UPDATE_METADATA = flag;
             process.env.IPA_ALLOW_APP_ACQUIRE = '1';
             const ipa = Object.create(Ipa.prototype);
+            ipa.creds = {APPLE_ID: "test@example.invalid"};
             const calls = [];
             ipa.helperApp = async () => ({trackId: 123, price: 0});
             ipa.helperRequest = async (command, input) => {

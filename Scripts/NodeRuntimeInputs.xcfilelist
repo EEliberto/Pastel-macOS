@@ -21,3 +21,5 @@ $(SRCROOT)/Scripts/StoreHelper.entitlements
 $(SRCROOT)/Scripts/BundleNodeRuntime.sh
 $(SRCROOT)/Scripts/VerifyDeviceGUIDImplementation.sh
 $(SRCROOT)/Scripts/PatchSparkleLocalizations.sh
+$(SRCROOT)/NodeProject/src/resumable-download.js
+$(SRCROOT)/StoreHelper/ipatool/LICENSE

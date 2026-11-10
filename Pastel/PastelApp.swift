@@ -924,9 +924,11 @@ struct NodeRuntime {
     }
 }
 
-struct RunConfig {
+struct RunConfig: Codable {
+    var displayAppName: String? = nil
+    var displayVersion: String? = nil
     let appleAccount: String
-    let password: String
+    var password: String
     var code: String
     let appID: String
     let versionID: String
@@ -1060,7 +1062,7 @@ enum StoreOperationPhase: String {
         case .waiting: String(localized: "等待认证")
         case .preparing: String(localized: "准备中")
         case .authenticating: String(localized: "认证中")
-        case .authorizing: String(localized: "获取许可")
+        case .authorizing: String(localized: "认证中")
         case .transferring: String(localized: "连接下载")
         case .packaging: String(localized: "处理中")
         }
@@ -1071,7 +1073,7 @@ enum StoreOperationPhase: String {
         case .waiting: String(localized: "正在等待其他任务完成认证…")
         case .preparing: String(localized: "首次使用正在准备 Apple 认证组件，可能需要几分钟…")
         case .authenticating: String(localized: "正在登录并验证 Apple 账户…")
-        case .authorizing: String(localized: "正在获取 App 下载许可…")
+        case .authorizing: String(localized: "正在登录并验证 Apple 账户…")
         case .transferring: String(localized: "正在连接下载服务器…")
         case .packaging: String(localized: "正在处理下载文件…")
         }
@@ -1206,14 +1208,15 @@ private func nodeQueryErrorMessage(_ error: Error) -> String {
     return String(localized: "Node 查询失败。")
 }
 
-enum JobStatus: Equatable {
-    case running, done, failed
+enum JobStatus: String, Codable {
+    case running, done, failed, paused
 
     var displayName: String {
         switch self {
         case .running: return String(localized: "运行中")
         case .done: return String(localized: "完成")
         case .failed: return String(localized: "失败")
+        case .paused: return String(localized: "已暂停")
         }
     }
 }
@@ -1701,11 +1704,134 @@ final class DownloadManager {
     private var pipes: [String: (Pipe, Pipe)] = [:]
     private var configs: [String: RunConfig] = [:]
     private var discardedJobIDs: Set<String> = []
+    private var pendingResumes: Set<String> = []
+    private var nativeTasks: [String: Task<Void, Never>] = [:]
+    private var nativeGenerations: [String: UUID] = [:]
 
-    var anyRunning: Bool { processes.values.contains(where: \.isRunning) }
-    var runningCount: Int { processes.values.count(where: \.isRunning) }
-    func isRunning(_ id: String) -> Bool { processes[id]?.isRunning == true }
+    private struct SavedJob: Codable {
+        let id: String
+        let label: String
+        let status: JobStatus
+        let progress: Double?
+        let config: RunConfig
+    }
+    private var restoring = false
+    private var persistenceError: String?
+    private let journalURL: URL
+    private static var jobsURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(appDisplayName).appendingPathComponent("download-jobs.json")
+    }
+    init(journalURL: URL? = nil, automaticallyResume: Bool = true) {
+        self.journalURL = journalURL ?? Self.jobsURL
+        guard let data = try? Data(contentsOf: self.journalURL),
+              let saved = try? JSONDecoder().decode([SavedJob].self, from: data) else { return }
+        restoring = true
+        for item in saved {
+            configs[item.id] = item.config
+            jobs[item.id] = Job(id: item.id, label: item.label, status: item.status == .running ? .paused : item.status, progress: item.progress)
+        }
+        restoring = false
+        guard automaticallyResume else { return }
+        let interrupted = saved.filter { $0.status == .running }.map(\.id)
+        Task { @MainActor [weak self] in
+            // Let orphaned download workers notice their parent exited before restarting.
+            try? await Task.sleep(for: .seconds(4))
+            for id in interrupted { self?.resume(id: id) }
+        }
+    }
+    var incompleteJobs: [Job] {
+        jobs.values.filter { $0.status != .done && configs[$0.id]?.listVersionIDs == false && configs[$0.id]?.validateLogin == false }
+            .sorted { $0.id < $1.id }
+    }
+    @discardableResult
+    private func persist() -> Bool {
+        guard !restoring else { return true }
+        let saved = incompleteJobs.compactMap { job -> SavedJob? in
+            guard !discardedJobIDs.contains(job.id), var config = configs[job.id] else { return nil }
+            // Credentials and OTPs remain in the vault, never in the task journal.
+            config.password = ""; config.code = ""
+            return SavedJob(id: job.id, label: job.label, status: job.status, progress: job.progress, config: config)
+        }
+        do {
+            try FileManager.default.createDirectory(at: journalURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(saved).write(to: journalURL, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: journalURL.path)
+            persistenceError = nil
+            return true
+        } catch {
+            persistenceError = error.localizedDescription
+            return false
+        }
+    }
+    private func partialDirectory(id: String) -> URL? {
+        guard let config = configs[id] else { return nil }
+        let key = id + "\n" + config.appleAccount.lowercased()
+        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
+        return URL(fileURLWithPath: config.downloadDir).appendingPathComponent(".pastel-partials").appendingPathComponent(digest)
+    }
+    func pause(id: String) {
+        guard var job = jobs[id], job.status == .running else { return }
+        pendingResumes.remove(id)
+        job.status = .paused; job.needsCode = false; job.needsAcquisition = false
+        jobs[id] = job; persist()
+        nativeTasks[id]?.cancel()
+        processes[id]?.terminate()
+        guard let process = processes[id] else { return }
+        let pid = process.processIdentifier
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self, self.processes[id]?.processIdentifier == pid else { return }
+            if process.isRunning {
+                Darwin.kill(pid, SIGKILL)
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            if !process.isRunning { self.finish(id: id, processID: pid, exitCode: process.terminationStatus) }
+        }
+    }
+    func resume(id: String) {
+        guard let job = jobs[id], var config = configs[id] else { return }
+        if nativeTasks[id] != nil {
+            pendingResumes.insert(id)
+            var waiting = job; waiting.status = .running; waiting.phase = .waiting
+            jobs[id] = waiting; persist()
+            return
+        }
+        if let process = processes[id] {
+            if process.isRunning {
+                // Accept the click while the paused worker is still shutting down.
+                pendingResumes.insert(id)
+                var waiting = job; waiting.status = .running; waiting.phase = .waiting
+                jobs[id] = waiting; persist()
+                return
+            }
+            // Process.isRunning can change before its termination callback reaches
+            // the main actor. A retained, exited process must not swallow resume.
+            cleanup(id: id)
+        }
+        do {
+            guard let account = try CredentialVault.load()?.accounts.first(where: { $0.appleAccount.caseInsensitiveCompare(config.appleAccount) == .orderedSame }) else {
+                throw NSError(domain: "Pastel", code: 1, userInfo: [NSLocalizedDescriptionKey: String(localized: "请重新登录 Apple 账户后继续下载。")])
+            }
+            config.password = try CredentialVault.loadPassword(for: account.id)
+            config.code = ""
+            start(id: id, label: job.label, config: config)
+        } catch {
+            var failed = job; failed.status = .failed; failed.log = error.localizedDescription
+            jobs[id] = failed; persist(); publishFailure(for: failed)
+        }
+    }
+    func cancel(id: String) { discard(id: id) }
+
+    var anyRunning: Bool { !nativeTasks.isEmpty || processes.values.contains(where: \.isRunning) }
+    var runningCount: Int { nativeTasks.count + processes.values.count(where: \.isRunning) }
+    func isRunning(_ id: String) -> Bool { nativeTasks[id] != nil || processes[id]?.isRunning == true }
     func job(_ id: String) -> Job? { jobs[id] }
+    func displayConfig(_ id: String) -> RunConfig? {
+        guard var config = configs[id] else { return nil }
+        config.password = ""; config.code = ""
+        return config
+    }
     var firstJobNeedingCode: Job? { jobs.values.first { $0.needsCode } }
     var codeNeededJobID: String? { jobs.values.first { $0.needsCode }?.id }
     var acquisitionRequest: AppAcquisitionRequest? {
@@ -1713,15 +1839,20 @@ final class DownloadManager {
         return AppAcquisitionRequest(id: job.id, appName: job.label)
     }
     var focusJob: Job? {
-        jobs.values.first { processes[$0.id]?.isRunning == true } ?? jobs.values.first
+        jobs.values.first { isRunning($0.id) } ?? jobs.values.first
     }
 
     func start(id: String, label: String, config: RunConfig) {
+        if !config.listVersionIDs && !config.validateLogin {
+            startNative(id: id, label: label, config: config)
+            return
+        }
         if let existingProcess = processes[id] {
             guard !existingProcess.isRunning else { return }
             cleanup(id: id)
         }
         configs[id] = config
+        defer { persist() }
 
         let runtime: (projectURL: URL, mainURL: URL, nodeURL: URL)
         let credentialInput: (pipe: Pipe, data: Data)
@@ -1742,7 +1873,15 @@ final class DownloadManager {
             return
         }
 
-        jobs[id] = Job(id: id, label: label, log: String(localized: "任务已开始。") + "\n")
+        let savedProgress = jobs[id]?.progress
+        jobs[id] = Job(id: id, label: label, log: String(localized: "任务已开始。") + "\n", progress: savedProgress)
+        if !config.listVersionIDs && !config.validateLogin && !persist() {
+            var failed = jobs[id]!
+            failed.status = .failed
+            failed.log = String(localized: "无法保存下载进度：") + (persistenceError ?? "")
+            jobs[id] = failed; publishFailure(for: failed)
+            return
+        }
 
         let task = Process()
         task.executableURL = runtime.nodeURL
@@ -1753,6 +1892,8 @@ final class DownloadManager {
         env["DOWNLOAD_APPID"] = config.appID
         env["DOWNLOAD_VERSION_ID"] = config.versionID
         env["DOWNLOAD_DIR"] = config.downloadDir
+        env["IPA_TASK_ID"] = id
+        env["IPA_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
         if config.listVersionIDs { env["IPA_LIST_VERSION_IDS"] = "1" }
         if config.validateLogin { env["IPA_VALIDATE_LOGIN"] = "1" }
         if config.allowAppAcquisition { env["IPA_ALLOW_APP_ACQUIRE"] = "1" }
@@ -1784,7 +1925,7 @@ final class DownloadManager {
             let code = finished.terminationStatus
             Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 120_000_000)
-                self?.finish(id: id, exitCode: code)
+                self?.finish(id: id, processID: finished.processIdentifier, exitCode: code)
             }
         }
 
@@ -1832,28 +1973,134 @@ final class DownloadManager {
         publishFailure(for: job)
     }
 
-    func stop(id: String) { processes[id]?.terminate() }
-    func stopAll() { processes.values.forEach { $0.terminate() } }
+    func stop(id: String) { pause(id: id) }
+    func stopAll() { for id in Set(processes.keys).union(nativeTasks.keys) { pause(id: id) } }
 
     func discard(id: String) {
         guard jobs[id] != nil || processes[id] != nil || configs[id] != nil else { return }
+        pendingResumes.remove(id)
         discardedJobIDs.insert(id)
-        if let process = processes[id], process.isRunning {
+        if var job = jobs[id] { job.status = .paused; jobs[id] = job }
+        persist()
+        if let native = nativeTasks[id] {
+            native.cancel()
+        } else if let process = processes[id], process.isRunning {
             process.terminate()
         } else {
+            if let directory = partialDirectory(id: id) { try? FileManager.default.removeItem(at: directory) }
             cleanup(id: id)
             jobs[id] = nil
             configs[id] = nil
             discardedJobIDs.remove(id)
+            persist()
         }
     }
 
     func remove(id: String) {
-        guard processes[id] == nil else { return }
-        jobs[id] = nil; configs[id] = nil
+        guard processes[id] == nil && nativeTasks[id] == nil else { return }
+        jobs[id] = nil; configs[id] = nil; persist()
     }
     func clearFinished() {
         for (k, v) in jobs where processes[k] == nil && v.status == .done { jobs[k] = nil; configs[k] = nil }
+    }
+
+    private func startNative(id: String, label: String, config: RunConfig) {
+        guard nativeTasks[id] == nil, processes[id]?.isRunning != true else { return }
+        configs[id] = config
+        // A completed job has no remaining partial archive. A fresh download
+        // must show preparation, not the previous run's 100%.
+        let progress = jobs[id]?.status == .done ? nil : jobs[id]?.progress
+        jobs[id] = Job(id: id, label: label, progress: progress, phase: .waiting)
+        do {
+            guard persist() else { throw NativeDownloadError(code: "PERSIST_FAILED", message: persistenceError ?? "无法保存下载任务。") }
+            let runtime = try NodeRuntime.locate()
+            let input = try NodeRuntime.credentialInput(appleAccount: config.appleAccount, password: config.password, code: config.code)
+            try? input.pipe.fileHandleForWriting.close()
+            try? input.pipe.fileHandleForReading.close()
+            guard let workspace = partialDirectory(id: id) else { return }
+            var environment = NodeRuntime.baseEnvironment()
+            environment["IPA_CREDENTIALS_STDIN"] = "1"
+            environment["IPA_NATIVE_PREPARE"] = "1"
+            environment["DOWNLOAD_APPID"] = config.appID
+            environment["DOWNLOAD_VERSION_ID"] = config.versionID
+            environment["DOWNLOAD_DIR"] = config.downloadDir
+            environment["IPA_TASK_ID"] = id
+            environment["IPA_PARENT_PID"] = String(ProcessInfo.processInfo.processIdentifier)
+            environment["IPA_DEVICE_GUID"] = try DeviceGUIDStore.current()
+            environment["IPA_APP_IS_FREE"] = config.appIsFree
+            environment["IPA_APP_COUNTRY"] = config.appCountry
+            environment["IPA_APP_PLATFORM"] = config.appPlatform
+            if config.allowAppAcquisition { environment["IPA_ALLOW_APP_ACQUIRE"] = "1" }
+            if let sessions = Self.sessionDirectoryURL() { environment["IPA_SESSION_DIR"] = sessions.path }
+            let spec = NativeDownloadSpec(id: id, directory: URL(fileURLWithPath: config.downloadDir), workspace: workspace,
+                node: runtime.nodeURL, project: runtime.projectURL, environment: environment, credentials: input.data,
+                email: config.appleAccount, removeUpdates: config.removeAppStoreUpdateMetadata)
+            let generation = UUID()
+            nativeGenerations[id] = generation
+            nativeTasks[id] = Task { [weak self] in
+                let outcome: Result<URL, Error>
+                do {
+                    let file = try await NativeDownloadEngine.shared.run(spec) { [weak self] event in
+                        Task { @MainActor [weak self] in self?.nativeEvent(id: id, generation: generation, event: event) }
+                    }
+                    outcome = .success(file)
+                } catch { outcome = .failure(error) }
+                self?.finishNative(id: id, generation: generation, outcome: outcome)
+            }
+        } catch {
+            var job = jobs[id]!
+            job.status = .failed; job.log = error.localizedDescription
+            jobs[id] = job; persist(); publishFailure(for: job)
+        }
+    }
+    private func nativeEvent(id: String, generation: UUID, event: NativeDownloadEvent) {
+        guard nativeGenerations[id] == generation, !discardedJobIDs.contains(id),
+              !pendingResumes.contains(id), var job = jobs[id], job.status == .running else { return }
+        let previousProgress = job.progress
+        switch event {
+        case .waiting: job.phase = .waiting
+        case .authenticating: job.phase = .authenticating
+        case let .transferring(received, total):
+            job.phase = .transferring
+            job.progress = total > 0 ? min(1, Double(received) / Double(total)) : nil
+        case .packaging: job.phase = .packaging
+        }
+        job.isPackaging = job.phase == .packaging
+        jobs[id] = job
+        if Int((previousProgress ?? 0) * 100) != Int((job.progress ?? 0) * 100) { persist() }
+    }
+    private func finishNative(id: String, generation: UUID, outcome: Result<URL, Error>) {
+        guard nativeGenerations[id] == generation else { return }
+        nativeTasks[id] = nil; nativeGenerations[id] = nil
+        defer { persist() }
+        if discardedJobIDs.remove(id) != nil {
+            if let directory = partialDirectory(id: id) { try? FileManager.default.removeItem(at: directory) }
+            jobs[id] = nil; configs[id] = nil
+            return
+        }
+        guard var job = jobs[id] else { return }
+        job.isPackaging = false
+        switch outcome {
+        case let .success(file):
+            pendingResumes.remove(id)
+            job.status = .done; job.progress = 1
+            job.needsCode = false; job.needsAcquisition = false
+            job.log = String(localized: "任务完成。") + "\n" + file.lastPathComponent
+            jobs[id] = job
+            for (otherID, otherJob) in jobs where otherID != id && !isRunning(otherID) && otherJob.awaitingSession {
+                resume(id: otherID)
+            }
+        case let .failure(error):
+            if pendingResumes.remove(id) != nil { resume(id: id); return }
+            if job.status == .paused { jobs[id] = job; return }
+            let code = (error as? NativeDownloadError)?.code ?? ""
+            job.status = .failed
+            job.needsCode = ["NEEDS_2FA", "AUTH_CODE_REQUIRED", "AUTH_CODE_INVALID", "AUTH_VERIFICATION_FAILED"].contains(code)
+            job.needsAcquisition = code == "LICENSE_REQUIRED"
+            job.log = error.localizedDescription
+            jobs[id] = job
+            if !job.needsCode && !job.needsAcquisition { publishFailure(for: job) }
+        }
     }
 
     private func append(id: String, _ text: String) {
@@ -1874,19 +2121,29 @@ final class DownloadManager {
             .filter { !$0.hasPrefix("@@IPA:") }
             .joined(separator: "\n")
         job.log += cleaned
+        let previousProgress = job.progress
         if let p = ipaProgressValue(from: job.log) { job.progress = p }
         jobs[id] = job
+        if previousProgress != job.progress { persist() }
     }
 
-    private func finish(id: String, exitCode: Int32) {
+    private func finish(id: String, processID: Int32, exitCode: Int32) {
+        guard processes[id]?.processIdentifier == processID else { return }
+        defer { persist() }
         cleanup(id: id)
         if discardedJobIDs.remove(id) != nil {
+            if let directory = partialDirectory(id: id) { try? FileManager.default.removeItem(at: directory) }
             jobs[id] = nil
             configs[id] = nil
             return
         }
         guard var job = jobs[id] else { return }
-        job.progress = nil; job.isPackaging = false
+        if pendingResumes.remove(id) != nil && exitCode != 0 {
+            resume(id: id)
+            return
+        }
+        if job.status == .paused && exitCode != 0 { job.isPackaging = false; jobs[id] = job; return }
+        job.isPackaging = false
         if exitCode == 0 {
             job.status = .done; job.needsCode = false; job.awaitingSession = false; job.needsAcquisition = false
             job.log += "\n" + String(localized: "任务完成。") + "\n"
@@ -1991,6 +2248,8 @@ struct VersionsResponse: Decodable {
 }
 
 struct DownloadedItem: Identifiable, Hashable, Sendable {
+    var pendingJobID: String? = nil
+    var pendingRegion: String? = nil
     let id: String
     let fileURL: URL
     let appName: String
@@ -2886,7 +3145,7 @@ struct ContentView: View {
 
     private var manualActionState: ManualActionState {
         if manualDownloadJob?.status == .failed { return .error }
-        if downloads.isRunning(manualDownloadJobID) { return .running }
+        if downloads.isRunning(manualDownloadJobID) || manualDownloadJob?.status == .paused { return .running }
         if manualDownloadedURL != nil { return .downloaded }
         return .ready
     }
@@ -3332,10 +3591,14 @@ struct ContentView: View {
                                             rowIndex: index,
                                             isSelected: versionFeature.selectedVersionIDs.contains(record.id),
                                             removesAppStoreUpdates: removesUpdates,
-                                            isDownloading: downloads.isRunning(jobID),
+                                            isDownloading: downloads.isRunning(jobID) || downloads.job(jobID)?.status == .paused,
                                             downloadProgress: downloads.job(jobID)?.progress,
                                             isPackaging: downloads.job(jobID)?.isPackaging ?? false,
                                             downloadPhase: downloads.job(jobID)?.phase,
+                                            isPaused: downloads.job(jobID)?.status == .paused,
+                                            onResume: { downloads.resume(id: jobID) },
+                                            onPause: { downloads.pause(id: jobID) },
+                                            onCancel: { downloads.cancel(id: jobID) },
                                             hasError: downloads.job(jobID)?.status == .failed,
                                             errorLog: downloads.job(jobID)?.log ?? "",
                                             downloadedURL: downloadedURL,
@@ -3522,9 +3785,7 @@ struct ContentView: View {
                 signIn: showRelogin
             )
         case .running:
-            DownloadProgressPill(progress: manualDownloadJob?.progress, isPackaging: manualDownloadJob?.isPackaging ?? false, phase: manualDownloadJob?.phase)
-                .glassEffectID("manual-download-action", in: manualActionGlassNamespace)
-                .glassEffectTransition(.matchedGeometry)
+            DownloadProgressPill(progress: manualDownloadJob?.progress, isPackaging: manualDownloadJob?.isPackaging ?? false, phase: manualDownloadJob?.phase, isPaused: manualDownloadJob?.status == .paused, onResume: { if let id = manualDownloadJob?.id { downloads.resume(id: id) } }, onPause: { if let id = manualDownloadJob?.id { downloads.pause(id: id) } }, onCancel: { if let id = manualDownloadJob?.id { downloads.cancel(id: id) } })
         case .downloaded:
             FileActionsBar(
                 isSelected: false,
@@ -3898,10 +4159,14 @@ struct ContentView: View {
                                     rowIndex: index,
                                     isSelected: versionFeature.selectedVersionIDs.contains(record.id),
                                     removesAppStoreUpdates: removesUpdates,
-                                    isDownloading: downloads.isRunning(jobID),
+                                    isDownloading: downloads.isRunning(jobID) || downloads.job(jobID)?.status == .paused,
                                     downloadProgress: downloads.job(jobID)?.progress,
                                     isPackaging: downloads.job(jobID)?.isPackaging ?? false,
                                             downloadPhase: downloads.job(jobID)?.phase,
+                                            isPaused: downloads.job(jobID)?.status == .paused,
+                                            onResume: { downloads.resume(id: jobID) },
+                                            onPause: { downloads.pause(id: jobID) },
+                                            onCancel: { downloads.cancel(id: jobID) },
                                     hasError: downloads.job(jobID)?.status == .failed,
                                     errorLog: downloads.job(jobID)?.log ?? "",
                                     downloadedURL: downloadedURL,
@@ -4109,10 +4374,13 @@ struct ContentView: View {
                             ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
                                 DownloadedVersionHistoryRow(
                                     item: item,
-                                    icon: libraryFeature.versionIcons[item.id],
+                                    icon: libraryFeature.versionIcons[item.id] ?? libraryFeature.versionIcons[group.iconPath],
                                     rowIndex: index,
                                     isSelected: libraryFeature.selectedDownloadedItemIDs.contains(item.id),
                                     remoteIconCache: $searchFeature.remoteAppIcons,
+                                    downloadJob: item.pendingJobID.flatMap { downloads.job($0) },
+                                    onPause: { if let id = item.pendingJobID { downloads.pause(id: id) } },
+                                    onResume: { if let id = item.pendingJobID { downloads.resume(id: id) } },
                                     onSelect: {
                                         handleDownloadedRowSelection(item)
                                     },
@@ -4144,7 +4412,7 @@ struct ContentView: View {
                     .contentMargins(.trailing, 0, for: .scrollIndicators)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    downloadedVersionsFooterBar(count: group.items.count)
+                    downloadedVersionsFooterBar(count: group.items.filter { $0.pendingJobID == nil }.count)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -5396,12 +5664,12 @@ struct ContentView: View {
 
     private func deleteSelectedDownloadedItems() {
         guard !libraryFeature.selectedDownloadedItemIDs.isEmpty else { return }
-        let urls = libraryFeature.downloadedItems
+        let urls = libraryDisplayItems
             .filter { libraryFeature.selectedDownloadedItemIDs.contains($0.id) }
             .map(\.fileURL)
 
         for url in urls {
-            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            deleteDownloaded(url)
         }
         libraryFeature.selectedDownloadedItemIDs.removeAll()
         libraryFeature.selectedDownloadedItemID = nil
@@ -5421,12 +5689,12 @@ struct ContentView: View {
     private func deleteDownloadedGroups(withIDs groupIDs: Set<String>) {
         guard !groupIDs.isEmpty else { return }
         let fallbackGroupID = filteredDownloadedAppGroups.first { !groupIDs.contains($0.id) }?.id
-        let urls = libraryFeature.downloadedItems
+        let urls = libraryDisplayItems
             .filter { groupIDs.contains($0.groupKey) }
             .map(\.fileURL)
 
         for url in urls {
-            try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            deleteDownloaded(url)
         }
 
         libraryFeature.selectedDownloadedGroupIDs.subtract(groupIDs)
@@ -5804,8 +6072,33 @@ struct ContentView: View {
         )
     }
 
+    private var libraryDisplayItems: [DownloadedItem] {
+        let pending = downloads.incompleteJobs.compactMap { job -> DownloadedItem? in
+            guard let config = downloads.displayConfig(job.id) else { return nil }
+            let existing = libraryFeature.downloadedItems.first { $0.appId == config.appID }
+            let label = job.label.replacingOccurrences(of: " · 不再更新", with: "")
+            let lastSpace = label.lastIndex(of: " ")
+            let fallbackVersion = lastSpace.map { String(label[label.index(after: $0)...]) } ?? config.versionID
+            let fallbackName = lastSpace.map { String(label[..<$0]) } ?? label
+            let token = SHA256.hash(data: Data(job.id.utf8)).map { String(format: "%02x", $0) }.joined()
+            return DownloadedItem(
+                pendingJobID: job.id,
+                pendingRegion: Locale(identifier: AppLanguage.effectiveCode).localizedString(forRegionCode: config.appCountry) ?? config.appCountry,
+                id: "pending-" + token, fileURL: URL(string: "pastel-download://" + token)!,
+                appName: existing?.appName ?? config.displayAppName ?? fallbackName,
+                developer: existing?.developer ?? "", bundleId: existing?.bundleId ?? "",
+                appId: config.appID, groupKey: existing?.groupKey ?? config.appID,
+                version: config.displayVersion ?? fallbackVersion, versionId: config.versionID,
+                sizeBytes: 0, appleAccount: config.appleAccount, storefrontId: existing?.storefrontId ?? "",
+                downloadDate: .distantPast, removesAppStoreUpdates: config.removeAppStoreUpdateMetadata,
+                artworkUrl: existing?.artworkUrl ?? "", softwarePlatform: config.appPlatform
+            )
+        }
+        return libraryFeature.downloadedItems + pending
+    }
+
     private var downloadedAppGroups: [DownloadedAppGroup] {
-        let grouped = Dictionary(grouping: libraryFeature.downloadedItems) { $0.groupKey }
+        let grouped = Dictionary(grouping: libraryDisplayItems) { $0.groupKey }
         return grouped.map { key, items in
             DownloadedAppGroup(id: key, items: items.sorted { $0.downloadDate > $1.downloadDate })
         }
@@ -5974,6 +6267,12 @@ struct ContentView: View {
     }
 
     private func deleteDownloaded(_ url: URL) {
+        if url.scheme == "pastel-download" {
+            if let id = libraryDisplayItems.first(where: { $0.fileURL == url })?.pendingJobID {
+                downloads.cancel(id: id)
+            }
+            return
+        }
         try? FileManager.default.trashItem(at: url, resultingItemURL: nil)
         libraryFeature.selectedDownloadedItemIDs = libraryFeature.selectedDownloadedItemIDs.filter { $0 != url.path }
         if libraryFeature.selectedDownloadedItemID == url.path {
@@ -6125,7 +6424,7 @@ struct ContentView: View {
         let removeUpdateMetadata = removeAppStoreUpdateMetadataOverride ?? versionFeature.selectedVersion.map { noUpdateEnabled(for: $0) } ?? false
         let accountCountry = account.countryCode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let priceFlag = accountCountry.caseInsensitiveCompare(selectedCountryCode) == .orderedSame ? appIsFreeFlag() : ""
-        let config = RunConfig(
+        var config = RunConfig(
             appleAccount: cleanAppleAccount,
             password: cleanPassword,
             code: cleanCode,
@@ -6142,6 +6441,8 @@ struct ContentView: View {
         let jobID = versionFeature.selectedVersion.map { downloadJobID(for: $0, removesAppStoreUpdates: removeUpdateMetadata) } ?? "manual-\(cleanAppID)-\(manualVersionKey)-\(variant.rawValue)"
         let labelVersion = versionFeature.selectedVersion?.version ?? (cleanVersionID.isEmpty ? String(localized: "最新版本") : cleanVersionID)
         let label = "\(activeAppName) \(labelVersion)\(removeUpdateMetadata ? " · 不再更新" : "")"
+        config.displayAppName = activeAppName
+        config.displayVersion = labelVersion
         downloads.start(id: jobID, label: label, config: config)
     }
 
@@ -6449,6 +6750,10 @@ struct DownloadProgressPill: View {
     let progress: Double?
     var isPackaging: Bool = false
     var phase: StoreOperationPhase?
+    var isPaused: Bool = false
+    var onResume: (() -> Void)?
+    var onPause: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     private var normalizedProgress: Double {
         min(max(progress ?? 0, 0), 1)
@@ -6465,6 +6770,58 @@ struct DownloadProgressPill: View {
     }
 
     var body: some View {
+        // Glass is composited outside its ordinary view layer. Opacity-hidden
+        // controls can still appear above another glass surface, so mount only
+        // the active controls. A new identity also replaces stale hit regions.
+        Group {
+            if isPaused {
+                HStack(spacing: 6) {
+                    Button { onResume?() } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                            .frame(width: 28, height: 26)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.tint(Color.accentColor.opacity(0.12)).interactive(), in: Capsule())
+                    .help(String(localized: "继续下载"))
+                    .accessibilityLabel(String(localized: "继续下载"))
+
+                    Button { onCancel?() } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.red)
+                            .frame(width: 28, height: 26)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(.regular.tint(Color.red.opacity(0.08)).interactive(), in: Capsule())
+                    .help(String(localized: "取消下载"))
+                    .accessibilityLabel(String(localized: "取消下载"))
+                }
+            } else if let onPause {
+                Button(action: onPause) { progressBody }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "暂停下载"))
+                    .accessibilityLabel(String(localized: "暂停下载"))
+                    .accessibilityValue(progressPercent.map { "\($0)%" } ?? phase?.title ?? String(localized: "下载中"))
+            } else {
+                progressBody
+            }
+        }
+        .id(isPaused)
+        .transition(.identity)
+        .frame(width: 62, height: 26)
+        .transaction { transaction in
+            // Do not keep an outgoing interactive glass layer alive during a
+            // crossfade, including animations inherited from a list row.
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+
+    private var progressBody: some View {
         GeometryReader { proxy in
             let fillWidth = proxy.size.width * fillFraction
 
