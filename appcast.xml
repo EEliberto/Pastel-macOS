@@ -3,6 +3,31 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20261110</title>
+            <pubDate>Tue, 10 Nov 2026 00:00:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261110</link>
+            <sparkle:version>2026111002</sparkle:version>
+            <sparkle:shortVersionString>20261110</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[感谢你使用 Pastel！
+
+本次 20261110 带来了众多优化和修复。
+
+此次更新内容：
+
+1.新增多线程并发模式，优化底层下载逻辑，并支持断点续传和 App 退出后恢复下载，也支持下载中途暂停和取消了。
+
+2.解决了一些已知问题或可能影响体验的问题。
+
+由于最近 Apple 频繁对 App Store Service 登陆方式进行调整和加强限制，可能未来 Pastel 将变得逐渐不再可用，因此请勿过度依赖本 Pastel。
+
+如果你在使用 Pastel 时遇到任何问题，请在 Github 中提交 Issue。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261110/Pastel-20261110-build-2026111002.dmg" sparkle:edSignature="DP57IIx4uvMU/adwlUiFm3v3Yv/hX0RaoEmXmOShNfCEcdBxxc2T6cn70w3cUdcHQuQRXlBZf4RG+lF/r4QBCw==" length="72323371" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>20261109</title>
             <pubDate>Mon, 09 Nov 2026 08:12:55 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261109</link>
