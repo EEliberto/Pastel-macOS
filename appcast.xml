@@ -3,6 +3,26 @@
     <channel>
         <title>Pastel</title>
         <item>
+            <title>20261119</title>
+            <pubDate>Thu, 19 Nov 2026 08:30:00 +0800</pubDate>
+            <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261119</link>
+            <sparkle:version>2026111901</sparkle:version>
+            <sparkle:shortVersionString>20261119</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <sparkle:criticalUpdate/>
+            <description sparkle:format="plain-text"><![CDATA[感谢你使用 Pastel！
+
+本次 20261119 更新内容：
+
+1. 修复部分 Apple 账户登录及获取 App 失败的问题。
+2. 优化认证组件加载、版本信息读取和并发请求稳定性。
+
+如果你在使用 Pastel 时遇到任何问题，请在 GitHub 中提交 Issue。
+]]></description>
+            <enclosure url="https://github.com/EEliberto/Pastel-macOS/releases/download/Pastel20261119/Pastel-20261119-build-2026111901.dmg" sparkle:edSignature="hG8bF3J1LBiskXuPcr2eRm1jTEj5pHoXTnA4x4ZrK1wFym+JENqAvmCC+hlFRMWOHBYgyd4enDaHdLFjSGMcBA==" length="72577001" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>20261110</title>
             <pubDate>Tue, 10 Nov 2026 00:00:00 +0800</pubDate>
             <link>https://github.com/EEliberto/Pastel-macOS/releases/tag/Pastel20261110</link>
