@@ -70,7 +70,7 @@ func (t *appstore) bag(guid string) (BagOutput, error) {
 	return BagOutput{AuthEndpoint: config.AuthEndpoint, SAPConfig: config}, nil
 }
 
-// Download endpoints do not require the authentication-specific SAP configuration.
+// Service endpoint discovery does not require the authentication-specific SAP configuration.
 func (t *appstore) fetchURLBag(guid string) (urlBag, error) {
 	res, err := t.bagClient.Send(t.bagRequest(guid))
 	if err != nil {
@@ -82,11 +82,19 @@ func (t *appstore) fetchURLBag(guid string) (urlBag, error) {
 	}
 
 	bag := res.Data.URLBag
+	if bag.TermsInfoEndpoint == "" {
+		bag.TermsInfoEndpoint = res.Data.TermsInfoEndpoint
+	}
+
+	if bag.TermsCheckEndpoint == "" {
+		bag.TermsCheckEndpoint = res.Data.TermsCheckEndpoint
+	}
+
 	if bag.AuthEndpoint != "" || bag.EntDownloadEndpoint != "" ||
 		bag.RedownloadEndpoint != "" || bag.UpdateEndpoint != "" ||
 		bag.SAPSetupEndpoint != "" || bag.SAPSetupCertEndpoint != "" ||
 		bag.SAPVersion != "" {
-		return res.Data.URLBag, nil
+		return bag, nil
 	}
 
 	return urlBag{
@@ -97,6 +105,8 @@ func (t *appstore) fetchURLBag(guid string) (urlBag, error) {
 		SAPSetupEndpoint:     res.Data.SAPSetupEndpoint,
 		SAPSetupCertEndpoint: res.Data.SAPSetupCertEndpoint,
 		SAPVersion:           res.Data.SAPVersion,
+		TermsInfoEndpoint:    bag.TermsInfoEndpoint,
+		TermsCheckEndpoint:   bag.TermsCheckEndpoint,
 	}, nil
 }
 
@@ -109,6 +119,8 @@ type bagResult struct {
 	SAPSetupEndpoint     string `plist:"sign-sap-setup,omitempty"`
 	SAPSetupCertEndpoint string `plist:"sign-sap-setup-cert,omitempty"`
 	SAPVersion           string `plist:"sign-sap-version,omitempty"`
+	TermsInfoEndpoint    string `plist:"getTermsByCountryAndTypeSrv,omitempty"`
+	TermsCheckEndpoint   string `plist:"terms-check,omitempty"`
 }
 
 type urlBag struct {
@@ -119,6 +131,8 @@ type urlBag struct {
 	SAPSetupEndpoint     string `plist:"sign-sap-setup,omitempty"`
 	SAPSetupCertEndpoint string `plist:"sign-sap-setup-cert,omitempty"`
 	SAPVersion           string `plist:"sign-sap-version,omitempty"`
+	TermsInfoEndpoint    string `plist:"getTermsByCountryAndTypeSrv,omitempty"`
+	TermsCheckEndpoint   string `plist:"terms-check,omitempty"`
 }
 
 func validateSAPConfig(config SAPConfig) error {
@@ -177,8 +191,13 @@ func validateAuthenticationEndpoint(endpoint string) error {
 }
 
 func (*appstore) bagRequest(guid string) http.Request {
+	endpoint := fmt.Sprintf("https://%s%s?ix=6", PrivateInitDomain, PrivateInitPath)
+	if guid != "" {
+		endpoint += "&guid=" + url.QueryEscape(guid)
+	}
+
 	return http.Request{
-		URL:            fmt.Sprintf("https://%s%s?ix=6&guid=%s", PrivateInitDomain, PrivateInitPath, guid),
+		URL:            endpoint,
 		Method:         http.MethodGET,
 		ResponseFormat: http.ResponseFormatXML,
 		Headers: map[string]string{

@@ -1,4 +1,4 @@
-// Pastel extension to pinned ipatool v2.8.0. Network transfer is owned by Swift.
+// Pastel extension to pinned ipatool (see StoreHelper/upstream.json). Network transfer is owned by Swift.
 package appstore
 
 import (

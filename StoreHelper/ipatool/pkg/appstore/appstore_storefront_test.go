@@ -8,6 +8,25 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+func testStorefrontCountryCodes() map[string]string {
+	return map[string]string{
+		"143441": "US",
+		"143443": "DE",
+		"143444": "GB",
+		"143465": "CN",
+		"143467": "IN",
+		"143469": "RU",
+	}
+}
+
+func availableStorefrontsFixture() []byte {
+	return []byte(`<?xml version="1.0" encoding="UTF-8"?>
+		<plist version="1.0"><dict><key>storefronts</key><array>
+			<dict><key>country-code</key><string>US</string><key>id</key><integer>143441</integer></dict>
+			<dict><key>country-code</key><string>DE</string><key>id</key><integer>143443</integer></dict>
+		</array></dict></plist>`)
+}
+
 func storefrontSearchItemFixture(kind, adamID, platform, salableAdamID, externalVersionID string) string {
 	return fmt.Sprintf(`{
 		"$kind":%q,
@@ -38,7 +57,7 @@ func storefrontPageFixture(items ...string) []byte {
 
 var _ = Describe("App Store storefront data", func() {
 	DescribeTable("resolves storefront response suffixes", func(storefront, country string) {
-		Expect(countryCodeFromStoreFront(storefront)).To(Equal(country))
+		Expect(countryCodeFromStoreFront(storefront, testStorefrontCountryCodes())).To(Equal(country))
 	},
 		Entry("comma suffix", "143441,34", "US"),
 		Entry("dash and comma suffixes", "143441-1,34", "US"),

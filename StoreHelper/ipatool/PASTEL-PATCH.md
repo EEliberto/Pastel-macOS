@@ -1,16 +1,16 @@
-Base: https://github.com/majd/ipatool/tree/72c47d538b726df397fbf17bb3af809d69ef51b7 (v2.8.0).
+Base: https://github.com/majd/ipatool/tree/3b02b4c55576562f2a55284cda9db9a4411d3067 (v2.8.1 plus subsequent upstream fixes).
 Retained: pkg/, internal/, module files and LICENSE.
 
-Applied upstream commits:
-- 856323251ab1f45455ccf32d2ae77b17c8b4cca9: authentication server dialogs.
-- 536d7bacc1c579d4420d0f4d2045368dcbf68732: percent-encoded URL queries.
+Synced on 2026-11-19. No upstream commits are deferred. The previously deferred
+dynamic storefront discovery is superseded by 3b02b4c55576, which resolves
+storefronts using scoped Apple bags instead of the failing fixed list endpoint.
+See ../upstream.json for the exact source and reviewed revisions.
 
-Deferred 0d99fc2d967b3f5b7696b7327adb277c7e3b5525 (dynamic storefronts):
-on 2026-11-09, real download preparation failed with “available storefronts
-request failed”. The same account and app succeeded with the v2.8.0 mapping.
-See ../upstream.json for the base, patches and last reviewed upstream revision.
+Pastel also synchronizes the parallel download test fixture handler assignment
+with request handling to eliminate a race detected by go test -race. This is a
+test-only patch.
 
-Pastel adds only pkg/appstore/pastel_native.go. It separates preparation from
+Pastel adds pkg/appstore/pastel_native.go. It separates preparation from
 local finalization, keeping original Apple authentication and packaging logic.
 Metadata travels as a binary plist inside the opaque JSON payload, preserving
 integer/date/data types. Local finalization clears a stale SINF staging ZIP

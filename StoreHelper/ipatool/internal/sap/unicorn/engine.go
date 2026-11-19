@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	queryPageSize    = 2
 	queryTimeout     = 4
 	controlCPUModel  = uint32(7 | 1<<26 | 1<<30)
 	arm64CPUModelMax = uint32(3)
@@ -142,6 +143,19 @@ func newEngine(ctx context.Context, loadLibrary func(context.Context) (library, 
 		return nil, err
 	}
 
+	// uc_open and CPU model selection leave initialization lazy. Force it here
+	// so later memory/register operations cannot reset the shared timeout clock.
+	if err := engineClock.initialize(ctx, func() error {
+		var pageSize uint64
+
+		return engine.err(engine.api.query(engine.handle, queryPageSize, &pageSize))
+	}); err != nil {
+		_ = engine.api.close(engine.handle)
+		_ = library.close()
+
+		return nil, fmt.Errorf("initialize arm64 emulator: %w", err)
+	}
+
 	runtime.SetFinalizer(engine, func(engine *Engine) {
 		_ = engine.Close()
 	})
@@ -154,7 +168,20 @@ func (e *Engine) register(handle uintptr) {
 	purego.RegisterLibFunc(&e.api.open, handle, "uc_open")
 	purego.RegisterLibFunc(&e.api.close, handle, "uc_close")
 	purego.RegisterLibFunc(&e.api.query, handle, "uc_query")
-	purego.RegisterLibFunc(&e.api.ctl, handle, "uc_ctl")
+	// Darwin ARM64 passes C variadic arguments on the stack. Fill the six
+	// remaining integer registers so purego places uc_ctl's value there.
+	if (runtime.GOOS == "darwin" || runtime.GOOS == "ios") && runtime.GOARCH == "arm64" {
+		var control func(uintptr, uint32, uintptr, uintptr, uintptr, uintptr, uintptr, uintptr, uint32) int32
+
+		purego.RegisterLibFunc(&control, handle, "uc_ctl")
+
+		e.api.ctl = func(engine uintptr, command, value uint32) int32 {
+			return control(engine, command, 0, 0, 0, 0, 0, 0, value)
+		}
+	} else {
+		purego.RegisterLibFunc(&e.api.ctl, handle, "uc_ctl")
+	}
+
 	purego.RegisterLibFunc(&e.api.strerror, handle, "uc_strerror")
 	purego.RegisterLibFunc(&e.api.memMap, handle, "uc_mem_map")
 	purego.RegisterLibFunc(&e.api.memUnmap, handle, "uc_mem_unmap")
@@ -306,6 +333,9 @@ func (e *Engine) Start(begin, end uint64) error {
 		return err
 	}
 
+	doneEmulation := engineClock.beginEmulation()
+	defer doneEmulation()
+
 	return e.executionError(e.err(e.api.emuStart(handle, begin, end, 0, 0)))
 }
 
@@ -329,6 +359,9 @@ func (e *Engine) StartBounded(begin, end uint64, timeout time.Duration, instruct
 	if err := e.executionError(nil); err != nil {
 		return err
 	}
+
+	doneEmulation := engineClock.beginEmulation()
+	defer doneEmulation()
 
 	if err := e.executionError(e.err(e.api.emuStart(handle, begin, end, microseconds, instructionLimit))); err != nil {
 		return err

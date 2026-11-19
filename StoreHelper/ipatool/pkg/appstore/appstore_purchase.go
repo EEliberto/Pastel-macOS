@@ -6,6 +6,7 @@ import (
 	gohttp "net/http"
 	"strings"
 
+	"github.com/majd/ipatool/v2/internal/store/terms"
 	"github.com/majd/ipatool/v2/pkg/http"
 )
 
@@ -34,10 +35,10 @@ func (t *appstore) Purchase(input PurchaseInput) error {
 		return errors.New("purchasing paid apps is not supported")
 	}
 
-	err = t.purchaseWithParams(input.Account, input.App, guid, PricingParameterAppStore)
+	err = t.purchaseWithParams(&input.Account, input.App, guid, PricingParameterAppStore)
 	if err != nil {
 		if input.Platform != PlatformMacOS && err == ErrTemporarilyUnavailable {
-			err = t.purchaseWithParams(input.Account, input.App, guid, PricingParameterAppleArcade)
+			err = t.purchaseWithParams(&input.Account, input.App, guid, PricingParameterAppleArcade)
 			if err != nil {
 				return fmt.Errorf("failed to purchase item with param '%s': %w", PricingParameterAppleArcade, err)
 			}
@@ -56,14 +57,58 @@ type purchaseResult struct {
 	CustomerMessage string `plist:"customerMessage,omitempty"`
 	JingleDocType   string `plist:"jingleDocType,omitempty"`
 	Status          int    `plist:"status,omitempty"`
+	Metrics         struct {
+		DialogID string `plist:"dialogId,omitempty"`
+	} `plist:"metrics,omitempty" json:"-"`
+	Dialog loginDialogResult       `plist:"dialog,omitempty" json:"-"`
+	Action loginDialogActionResult `plist:"action,omitempty" json:"-"`
 }
 
-func (t *appstore) purchaseWithParams(acc Account, app App, guid string, pricingParameters string) error {
-	req := t.purchaseRequest(acc, app, acc.StoreFront, guid, pricingParameters)
-	res, err := t.purchaseClient.Send(req)
+func (t *appstore) purchaseWithParams(acc *Account, app App, guid string, pricingParameters string) error {
+	var res http.Result[purchaseResult]
 
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+	var err error
+
+	storefrontRecovered, termsAccepted := false, false
+
+	for {
+		req := t.purchaseRequest(*acc, app, acc.StoreFront, guid, pricingParameters)
+
+		res, err = t.purchaseClient.Send(req)
+		if err != nil {
+			return fmt.Errorf("request failed: %w", err)
+		}
+
+		if res.StatusCode != gohttp.StatusOK {
+			break
+		}
+
+		if storefront := purchaseStorefrontCorrection(res.Data, acc.StoreFront); storefront != "" && !storefrontRecovered {
+			if err := t.saveAccountStorefront(acc.DirectoryServicesID, storefront); err != nil {
+				return fmt.Errorf("failed to correct account storefront: %w", err)
+			}
+
+			acc.StoreFront = storefront
+			storefrontRecovered = true
+
+			continue
+		}
+
+		if res.Data.JingleDocType == "buyProductFailure" && res.Data.Action.Kind == "Goto" && terms.IsPageURL(res.Data.Action.URL) {
+			if termsAccepted {
+				return errors.New("apple still requires terms acceptance after confirming the current terms")
+			}
+
+			if err := t.acceptPurchaseTerms(*acc, guid); err != nil {
+				return fmt.Errorf("failed to accept App Store terms: %w", err)
+			}
+
+			termsAccepted = true
+
+			continue
+		}
+
+		break
 	}
 
 	if res.Data.FailureType == FailureTypeTemporarilyUnavailable {

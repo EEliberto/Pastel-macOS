@@ -3,7 +3,7 @@ module github.com/EEliberto/PastelStoreHelper
 go 1.26.5
 
 require (
-	github.com/majd/ipatool/v2 v2.8.0
+	github.com/majd/ipatool/v2 v2.8.1
 	github.com/schollz/progressbar/v3 v3.19.1
 	golang.org/x/sys v0.48.0
 	howett.net/plist v1.0.1

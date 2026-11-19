@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/majd/ipatool/v2/internal/store"
 	"github.com/majd/ipatool/v2/pkg/http"
 	"github.com/majd/ipatool/v2/pkg/keychain"
 	"github.com/majd/ipatool/v2/pkg/util/machine"
@@ -63,16 +64,17 @@ var _ = Describe("AppStore (Download)", func() {
 		mockOS = operatingsystem.NewMockOperatingSystem(ctrl)
 		mockMachine = machine.NewMockMachine(ctrl)
 		as = &appstore{
-			keychain:         mockKeychain,
-			bagClient:        mockBagClient,
-			loginClient:      mockLoginClient,
-			purchaseClient:   mockPurchaseClient,
-			downloadClient:   mockDownloadClient,
-			platformClient:   mockPlatformClient,
-			storefrontClient: mockStorefrontClient,
-			httpClient:       mockHTTPClient,
-			machine:          mockMachine,
-			os:               mockOS,
+			keychain:               mockKeychain,
+			bagClient:              mockBagClient,
+			loginClient:            mockLoginClient,
+			purchaseClient:         mockPurchaseClient,
+			downloadClient:         mockDownloadClient,
+			platformClient:         mockPlatformClient,
+			storefrontClient:       mockStorefrontClient,
+			storefrontCountryCodes: testStorefrontCountryCodes(),
+			httpClient:             mockHTTPClient,
+			machine:                mockMachine,
+			os:                     mockOS,
 		}
 	})
 
@@ -109,6 +111,19 @@ var _ = Describe("AppStore (Download)", func() {
 			Expect(err).To(HaveOccurred())
 		})
 	})
+
+	DescribeTable("suggests logging in when Store AMD state is not provisioned",
+		func(state []byte) {
+			as.(*appstore).authBackend = store.New(nil, nil)
+			mockMachine.EXPECT().MacAddress().Return("00:11:22:33:44:55", nil)
+			mockKeychain.EXPECT().Get(anisetteKeychainKey).Return(state, nil)
+
+			_, err := as.Download(DownloadInput{App: App{ID: 1641486558}})
+			Expect(err).To(MatchError("failed to send http request: generate Store AMD proof: store AMD state is not provisioned; run 'ipatool auth login' to authenticate"))
+		},
+		Entry("missing state", nil),
+		Entry("persisted identity without provisioning", []byte(`{"Identifier":"AAECAwQFBgcICQoLDA0ODw=="}`)),
+	)
 
 	When("request uses a custom pod", func() {
 		const (
@@ -811,12 +826,13 @@ var _ = Describe("AppStore (Download)", func() {
 			}, nil)
 
 			store := &appstore{
-				downloadClient: mockDownloadClient,
-				bagClient:      mockBagClient,
-				platformClient: mockPlatformClient,
-				httpClient:     mockHTTPClient,
-				machine:        mockMachine,
-				os:             operatingsystem.New(),
+				downloadClient:         mockDownloadClient,
+				bagClient:              mockBagClient,
+				platformClient:         mockPlatformClient,
+				httpClient:             mockHTTPClient,
+				machine:                mockMachine,
+				os:                     operatingsystem.New(),
+				storefrontCountryCodes: testStorefrontCountryCodes(),
 			}
 			out, err := store.Download(DownloadInput{
 				Account:           Account{StoreFront: "143441", Email: "test@example.com"},
@@ -1082,7 +1098,7 @@ var _ = Describe("AppStore (Download)", func() {
 				Stat(testFile.Name()).
 				Return(info, nil)
 			mockHTTPClient.EXPECT().
-				Do(request.WithContext(context.Background())).
+				Do(gomock.AssignableToTypeOf(request)).
 				DoAndReturn(func(request *gohttp.Request) (*gohttp.Response, error) {
 					Expect(request.Header.Get("range")).To(Equal("bytes=8-"))
 
@@ -1292,12 +1308,13 @@ var _ = Describe("Downloading delisted tvOS apps", func() {
 		mockMachine := machine.NewMockMachine(ctrl)
 		mockMachine.EXPECT().MacAddress().Return("00:11:22:33:44:55", nil)
 		store = &appstore{
-			platformClient: platformClient,
-			downloadClient: downloadClient,
-			bagClient:      bagClient,
-			httpClient:     httpClient,
-			machine:        mockMachine,
-			os:             operatingsystem.New(),
+			platformClient:         platformClient,
+			downloadClient:         downloadClient,
+			bagClient:              bagClient,
+			httpClient:             httpClient,
+			machine:                mockMachine,
+			os:                     operatingsystem.New(),
+			storefrontCountryCodes: testStorefrontCountryCodes(),
 		}
 		input = DownloadInput{
 			Account:    Account{StoreFront: "143441"},
